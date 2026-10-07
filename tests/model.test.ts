@@ -1,0 +1,8 @@
+import{test}from'node:test';import assert from'node:assert/strict';import{train,predict}from'../src/model';import{csv,validateBackup}from'../src/store';
+const vector=(label:number,j:number)=>Array.from({length:64},(_,i)=>Math.sin(i*.41+label*1.8)+Math.cos(i*.13+label*.8)+.018*Math.sin(i*1.7+j*.5));
+const samples=[0,1,2].flatMap(l=>Array.from({length:10},(_,j)=>({label:String(l),vector:vector(l,j)})));
+test('PCA + regularized LDA separates enrolled classes and rejects unfamiliar patterns',()=>{const m=train(samples);assert.equal(m.lda.length,2);for(const label of [0,1,2]){const p=predict(m,vector(label,11));assert.equal(p.label,String(label));assert.equal(p.accepted,true)}assert.equal(predict(m,Array.from({length:64},(_,i)=>5*Math.sin(i*3.8))).accepted,false);});
+test('PCA bases are orthonormal and serialized model remains usable',()=>{const m=train(samples);for(let i=0;i<m.pca.length;i++)for(let j=0;j<m.pca.length;j++){const dot=m.pca[i].reduce((s,x,k)=>s+x*m.pca[j][k],0);assert.ok(Math.abs(dot-+(i===j))<1e-5)}assert.equal(predict(JSON.parse(JSON.stringify(m)),vector(1,11)).label,'1');});
+test('Training rejects insufficient registration and inconsistent dimensions',()=>{assert.throws(()=>train(samples.filter(s=>s.label==='0')),/two students/);assert.throws(()=>train([...samples.filter(s=>s.label==='0'),{label:'1',vector:vector(1,0)}]),/five/);assert.throws(()=>train(samples.map((s,i)=>i? s:{...s,vector:[1]})),/Invalid/);});
+test('CSV escapes quotes and prevents spreadsheet formula execution',()=>{assert.equal(csv([['=1+1','a"b','Smith, John']]),'"\'=1+1","a""b","Smith, John"');});
+test('Restore refuses malformed data',()=>{assert.throws(()=>validateBackup({classes:[],students:[{name:'test'}],sessions:[],models:{}}),/invalid student/);});

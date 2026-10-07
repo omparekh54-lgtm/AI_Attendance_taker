@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vercel/
+.env*
+public/wasm/
+test-results/
+playwright-report/
+*.tsbuildinfo
