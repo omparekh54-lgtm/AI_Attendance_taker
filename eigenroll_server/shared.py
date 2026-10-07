@@ -25,7 +25,7 @@ def db(path, method='GET', body=None, prefer=None):
         with urlopen(req,timeout=15) as r:
             raw=r.read(); return json.loads(raw) if raw else None
     except HTTPError as e:
-        if e.code==409: raise GatewayError('This roll number has already submitted a registration.',409)
+        if e.code==409: raise GatewayError('This SAP ID has already submitted a registration.',409)
         raise GatewayError('Shared storage could not complete this request.') from e
     except (URLError,TimeoutError) as e: raise GatewayError('Shared storage is temporarily unavailable. Please retry.') from e
 
@@ -119,14 +119,14 @@ def enrollment(request):
     limit(request,'enrollment',30);d=data(request)
     if d.get('consent') is not True:raise GatewayError('Please confirm your permission to register your face samples.',400)
     name=d.get('name','');roll=d.get('roll','');faces=d.get('faces')
-    if not isinstance(name,str) or not isinstance(roll,str) or not 1<=len(name.strip())<=100 or not 1<=len(roll.strip())<=40:raise GatewayError('Enter a full name and roll number.',400)
+    if not isinstance(name,str) or not isinstance(roll,str) or not 1<=len(name.strip())<=100 or not 1<=len(roll.strip())<=40:raise GatewayError('Enter a full name and SAP ID.',400)
     if not isinstance(faces,list) or not 20<=len(faces)<=30:raise GatewayError('Collect 20–30 accepted face samples.',400)
     for f in faces:
         if not isinstance(f,dict) or not isinstance(f.get('image'),str) or not f['image'].startswith('data:image/jpeg;base64,') or len(f['image'])>30000: raise GatewayError('Invalid face image.',400)
         v=f.get('vector')
         if not isinstance(v,list) or len(v)!=576 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>25 for x in v):raise GatewayError('Invalid face sample.',400)
     students=db(query('eigenroll_entities',kind='eq.students',select='payload',**{'payload->>classId':'eq.'+invite['classId'],'payload->>roll':'eq.'+roll.strip()}))
-    if students: raise GatewayError('This roll number is already enrolled. Contact your teacher for updates.',409)
+    if students: raise GatewayError('This SAP ID is already enrolled. Contact your teacher for updates.',409)
     record={'id':str(uuid.uuid4()),'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces}
     db('eigenroll_enrollments','POST',{'class_id':invite['classId'],'roll':roll.strip(),'payload':record})
     return JsonResponse({'ok':True,'message':'Submitted for teacher review. You can close this page.'},status=201)
