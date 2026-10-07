@@ -1,0 +1,30 @@
+{
+  "dataset": "Olivetti faces (AT&T)",
+  "source": "https://scikit-learn.org/stable/modules/generated/sklearn.datasets.fetch_olivetti_faces.html",
+  "images": 400,
+  "identities": 40,
+  "dimensions": 576,
+  "preprocessing": "Provided face crops resized bilinearly to 24x24; per-image mean/std normalization. Does not test classroom face detection.",
+  "split": "Identities 0–31: indices 1,4,8 held out; remaining 7 images train. Identities 32–39 entirely held out as unknown.",
+  "trainingImages": 224,
+  "knownTestImages": 96,
+  "unknownTestImages": 80,
+  "closedSetCorrect": 93,
+  "closedSetAccuracy": 0.96875,
+  "acceptedKnown": 20,
+  "correctAcceptedKnown": 20,
+  "knownAcceptanceRate": 0.20833333333333334,
+  "acceptedPrecision": 1,
+  "unknownRejected": 80,
+  "unknownRejectionRate": 1,
+  "trainingMilliseconds": 445,
+  "pcaComponents": 16,
+  "ldaComponents": 16,
+  "limitations": [
+    "One fixed split, not cross-validation",
+    "Unknown rejection is heuristic; thresholds not calibrated on classroom data",
+    "Dataset subjects are not enrolled students",
+    "Classroom accuracy and liveness are not measured"
+  ],
+  "runDate": "2026-10-07T05:45:57.143Z"
+}
