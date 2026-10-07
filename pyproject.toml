@@ -1,0 +1,11 @@
+[project]
+name = "eigenroll-django"
+version = "1.1.0"
+requires-python = ">=3.12"
+dependencies = ["Django==5.2.18", "whitenoise==6.12.0"]
+
+[tool.vercel]
+entrypoint = "eigenroll_server.wsgi:application"
+
+[tool.vercel.scripts]
+build = "python build.py"

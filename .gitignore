@@ -5,4 +5,10 @@ dist/
 public/wasm/
 test-results/
 playwright-report/
+
+__pycache__/
+*.pyc
 *.tsbuildinfo
+staticfiles/
+.venv/
+.netlify/

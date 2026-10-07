@@ -1,6 +1,6 @@
 # EigenRoll
 
-**Attendance, in focus.** A local-first classroom attendance web application built with React and TypeScript, using PCA and regularized LDA recognition implemented from scratch.
+**Attendance, in focus.** A local-first classroom attendance web application served by Django with a React/TypeScript interface, using PCA and regularized LDA recognition implemented from scratch.
 
 ## Features
 
@@ -18,15 +18,31 @@
 ## Run
 
 ```sh
-npm ci
-npm run dev
-npm test
-npm run build
+python -m venv .venv
+# Activate .venv using the command for your operating system.
+python -m pip install -r requirements.txt
+python build.py
+python manage.py runserver
 ```
+
+Verification:
+
+```sh
+python manage.py test eigenroll_server
+npm test
+```
+
+Open http://127.0.0.1:8000 after running Django. `python build.py` installs the browser dependencies, builds the interface, produces the Django template, and collects static files. `npm run dev` is a frontend development preview only; it is not the production Django server.
 
 The postinstall script copies MediaPipe WASM into `public/wasm`. The face detector model is included in the repository; if missing, it downloads Google's official model. No AI API key, account or database service is required.
 
-Vercel settings: Vite framework, `npm run build`, output `dist`, repository root. The public deployment contains application assets only, never registered student data.
+Vercel settings: **Django** framework, `python build.py`, repository root, and no custom output directory. `manage.py` and `pyproject.toml` identify the WSGI entrypoint. Vercel serves `/static/` through its CDN and routes pages/API requests through Django. The deployment contains application assets only, never registered student data.
+
+Django owns the application document and safe JSON runtime configuration. `/api/health` identifies the Django backend and `/api/config` provides read-only recognition/capture settings. Recognition still runs in a browser Web Worker; this framework conversion does not move student biometrics to the server. There is no server ORM persistence or teacher account system.
+
+Netlify does not natively provide a Python/Django function runtime. A static-only Netlify deployment would not satisfy the Django-hosting requirement; do not use it as a substitute without arranging a separate Django host.
+
+Optional environment variables: `DJANGO_SECRET_KEY` (persistent private key if signed sessions/auth are added), `DJANGO_ALLOWED_HOSTS` (comma-separated custom domains), `DJANGO_DEBUG=1` for local diagnostics only. Vercel-provided deployment domains are allowlisted automatically. No secret is committed. Without a configured secret, this stateless app generates an ephemeral process key; no signed sessions are used.
 
 ## Teacher workflow
 
@@ -52,7 +68,7 @@ The app samples approximately 1.7 video frames per second, uses the first 60 sec
 
 ## Evaluation
 
-Tests cover synthetic class separation and unknown-pattern rejection, PCA orthonormality, model serialization, input validation and spreadsheet-safe CSV. These tests demonstrate implementation behavior, **not face-recognition accuracy**. Evaluate with students and unknown people from separate capture days; never split adjacent video frames into train/test. Report false attendance, misses, unknown acceptance/rejection, and CPU processing time.
+Five Django tests cover rendering, health/config routes, safe runtime configuration, static WASM/model packaging and invalid route handling. Browser checks on the actual Django server cover CSV import, persistence, real-image face detection, teacher review, saving attendance, audited corrections and mobile layout. Five recognition/data tests cover synthetic class separation and unknown-pattern rejection, PCA orthonormality, model serialization, input validation and spreadsheet-safe CSV. These tests demonstrate implementation behavior, **not face-recognition accuracy**. Evaluate with students and unknown people from separate capture days; never split adjacent video frames into train/test. Report false attendance, misses, unknown acceptance/rejection, and CPU processing time.
 
 ## Model provenance
 
