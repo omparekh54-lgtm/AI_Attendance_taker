@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Camera,Upload,Check,ScanFace,ChevronRight,ShieldCheck,LoaderCircle,ArrowLeft,ArrowRight,ArrowUp,ArrowDown} from 'lucide-react';
 import {detect,imageFile} from './vision';import {api} from './api';import {config} from './config';import type {Face} from './store';
-export function Entry({children}:{children:React.ReactNode}){const[teacher,setTeacher]=useState(false),[checking,setChecking]=useState(true),[login,setLogin]=useState(false),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+export function Entry({children}:{children:React.ReactNode}){const[teacher,setTeacher]=useState(false),[checking,setChecking]=useState(true),[login,setLogin]=useState(!new URLSearchParams(location.search).has('invite')&&new URLSearchParams(location.search).get('page')!=='register'),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
 useEffect(()=>{api('auth').then(r=>setTeacher(r.teacher)).catch(()=>{}).finally(()=>setChecking(false))},[]);
 if(checking)return <div className="loading"><LoaderCircle className="spin"/>Opening EigenRoll…</div>;
 if(teacher)return <><button className="signout" onClick={async()=>{await api('auth','DELETE');location.reload()}}>Teacher sign out</button>{children}</>;

@@ -1,5 +1,5 @@
 export type Sample={label:string;vector:number[]};
-export type Model={mean:number[];pca:number[][];lda:number[][];templates:Sample[];limits:Record<string,number>;version:string;dimensions:number;trainedAt:string};
+export type Model={mean:number[];pca:number[][];lda:number[][];templates:Sample[];limits:Record<string,number>;version:string;dimensions:number;trainedAt:string;rosterSignature?:string};
 const dot=(a:number[],b:number[])=>a.reduce((s,v,i)=>s+v*b[i],0);
 const norm=(a:number[])=>Math.sqrt(dot(a,a));
 const project=(x:number[],basis:number[][])=>basis.map(b=>dot(x,b));
