@@ -15,3 +15,6 @@ export async function load():Promise<State>{if(!config.sharedStorage)return loca
 export async function save(state:State){if(!config.sharedStorage)return localSave(state);const rows=entities(state);for(const row of rows){const content=JSON.stringify(row.payload),previous=remote.get(row.id);if(previous?.content===content)continue;const result=await api<{revision:number}>('workspace','POST',{...row,revision:previous?.revision});remote.set(row.id,{content,revision:result.revision});}for(const [id,previous]of remote){if(rows.some(r=>r.id===id))continue;await api('workspace','DELETE',{id,kind:id.split(':')[0],revision:previous.revision});remote.delete(id);}}
 
 export const loadPreviousBrowserWorkspace=localLoad;
+
+
+export async function loadAttendance():Promise<State>{if(!config.sharedStorage)return localLoad();const state=structuredClone(initial);for(let offset=0;;offset+=5){const r=await api<{rows:{payload:Student}[]}>('attendance?kind=students&offset='+offset);state.students.push(...r.rows.map(row=>row.payload));if(r.rows.length<5)break;}const r=await api<{rows:{payload:Model}[]}>('attendance?kind=models');if(r.rows[0])state.models.classroom=r.rows[0].payload;state.classes=[{id:'classroom',name:'BTI DS 2022 - 28'}];return state;}

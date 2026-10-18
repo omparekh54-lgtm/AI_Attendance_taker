@@ -64,3 +64,14 @@ class SharedSecurityTests(SimpleTestCase):
         client=Client(enforce_csrf_checks=True)
         self.assertEqual(client.post('/api/auth','{}',content_type='application/json').status_code,403)
         self.assertEqual(client.post('/api/enroll','{}',content_type='application/json').status_code,403)
+
+
+    def test_direct_attendance_is_read_only_and_omits_enrollment_images(self):
+        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[0.0]*576}]}
+        with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]):
+            r=self.client.get('/api/attendance');self.assertEqual(r.status_code,200)
+        self.assertEqual(r.json()['rows'][0]['payload']['faces'][0]['image'],'')
+        self.assertEqual(r['Cache-Control'],'no-store')
+        self.assertEqual(self.client.get('/api/attendance?kind=sessions').status_code,400)
+        self.assertEqual(self.post('/api/attendance',{}).status_code,405)
+        self.assertEqual(self.post('/api/workspace',{}).status_code,401)

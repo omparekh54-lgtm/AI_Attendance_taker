@@ -5,23 +5,25 @@ import {Entry} from './enrollment';
 import {Registrations} from './registrations';
 import {CameraCapture} from './camera';
 import {PhoneCapture,PhonePair} from './phone';
-import {load,save,initial,type State,type Student} from './store';
+import {load,loadAttendance,save,initial,type State,type Student} from './store';
 import {recognizeCapture,rosterSignature,type DetectedFace,type Observation} from './attendance';
 import type {Model} from './model';
 import './style.css';
 import './board.css';
+const management=new URLSearchParams(location.search).get('page')==='manage';
+const readState=()=>management?load():loadAttendance();
 const BATCH_ID='classroom',BATCH_NAME='BTI DS 2022 - 28';
 function trainModel(students:Student[]):Promise<Model>{return new Promise((resolve,reject)=>{const worker=new Worker(new URL('./train.worker.ts',import.meta.url),{type:'module'});worker.onmessage=e=>{worker.terminate();if(e.data.error)reject(Error(e.data.error));else resolve({...e.data.model,rosterSignature:rosterSignature(students)})};worker.onerror=e=>{worker.terminate();reject(Error(e.message))};worker.postMessage(students.flatMap(s=>s.faces.map(f=>({label:s.id,vector:f.vector}))))})}
 function App(){
- const[state,setState]=useState<State>(initial),[loaded,setLoaded]=useState(false),[admin,setAdmin]=useState(false),[busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[phone,setPhone]=useState(false),[captures,setCaptures]=useState(0),[observations,setObservations]=useState<Observation[]>([]),[manual,setManual]=useState<Record<string,boolean>>({}),[search,setSearch]=useState('');
+ const[state,setState]=useState<State>(initial),[loaded,setLoaded]=useState(false),[admin]=useState(management),[busy,setBusy]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[phone,setPhone]=useState(false),[captures,setCaptures]=useState(0),[observations,setObservations]=useState<Observation[]>([]),[manual,setManual]=useState<Record<string,boolean>>({}),[search,setSearch]=useState('');
  const results=useRef<HTMLElement>(null);useEffect(()=>{if(captures>0)results.current?.scrollIntoView({behavior:'smooth',block:'start'})},[captures]);
  const lock=useRef(false),currentModel=useRef<Model|undefined>(undefined);
  const students=useMemo(()=>state.students.filter(s=>s.classId===BATCH_ID).sort((a,b)=>a.name.localeCompare(b.name)),[state.students]);
  const model=state.models[BATCH_ID],validModel=model?.rosterSignature===rosterSignature(students)?model:undefined;currentModel.current=validModel;
- useEffect(()=>{load().then(s=>{setState(s);setLoaded(true)}).catch(e=>setError(e.message))},[]);
- async function commit(next:State){await save(next);setState(next)}
+ useEffect(()=>{readState().then(s=>{setState(s);setLoaded(true)}).catch(e=>setError(e.message))},[]);
+ async function commit(next:State){if(management)await save(next);setState(next)}
  async function task(label:string,fn:()=>Promise<void>){if(lock.current)return;lock.current=true;setBusy(label);setError('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy('');lock.current=false}}
- async function refresh(){setPhone(false);await task('Refreshing class',async()=>{setState(await load());reset()})}
+ async function refresh(){setPhone(false);await task('Refreshing class',async()=>{setState(await readState());reset()})}
  async function train(){await task('Preparing recognition for your batch',async()=>{if(students.some(s=>s.faces.length<5))throw Error('Every registered student needs at least 5 face samples.');const trained=await trainModel(students);await commit({...state,models:{...state.models,[BATCH_ID]:trained}});setNotice('Recognition is ready. Open the camera to begin.')})}
  // Prepare once for an untrained roster; worker keeps the smartboard responsive.
  const attempted=useRef('');useEffect(()=>{const signature=rosterSignature(students);if(!loaded||students.length<2||validModel||attempted.current===signature)return;attempted.current=signature;void train()},[loaded,students,validModel]);
@@ -32,7 +34,7 @@ function App(){
  const present=students.filter(isPresent),notDetected=students.filter(s=>!isPresent(s)),unresolved=observations.filter(o=>!o.studentId);
  const searchMatch=(s:Student)=>(s.name+' '+s.roll).toLowerCase().includes(search.toLowerCase());
  if(!loaded)return <div className="loading"><LoaderCircle className="spin"/>Opening your batch…{error&&<div className="alert error">{error}<button onClick={()=>location.reload()}>Retry</button></div>}</div>;
- return <div className="board-app"><header className="board-header"><a className="brand" href="/"><span className="brand-icon"><ScanFace/></span>eigenroll<span className="brand-dot">.</span></a><div className="board-header-actions"><button onClick={()=>{setPhone(false);setAdmin(!admin)}} disabled={!!busy}>{admin?<ChevronLeft size={18}/>:<Settings size={18}/>} {admin?'Take attendance':'Manage batch'}</button><button onClick={refresh} disabled={!!busy} aria-label="Refresh batch"><RefreshCw size={18}/></button></div></header>
+ return <div className="board-app"><header className="board-header"><a className="brand" href="/"><span className="brand-icon"><ScanFace/></span>eigenroll<span className="brand-dot">.</span></a><div className="board-header-actions"><button onClick={()=>{location.href=management?'/':'/?page=manage'}} disabled={!!busy}>{admin?<ChevronLeft size={18}/>:<Settings size={18}/>} {admin?'Take attendance':'Manage batch'}</button><button onClick={refresh} disabled={!!busy} aria-label="Refresh batch"><RefreshCw size={18}/></button></div></header>
  <main className="board-main"><div className="board-title"><div><span className="eyebrow">{admin?'YOUR BATCH':'SMARTBOARD ATTENDANCE'}</span><h1>{BATCH_NAME}</h1><p>{admin?'Registered students and incoming submissions.':'Open camera. Take a photo. See who is here.'}</p></div><span className={`status ${validModel?'green':'amber'}`}>{validModel?'Recognition ready':'Preparing recognition'}</span></div>
  {error&&<div className="alert error" role="alert">{error}</div>}{busy&&<div className="alert" role="status"><LoaderCircle size={18} className="spin"/>{busy}…</div>}{notice&&<div className="alert success" role="status">{notice}</div>}
  {admin?<><div inert={!!busy}><Registrations state={state} commit={commit} classId={BATCH_ID} onNotice={setNotice} onError={setError}/></div><section className="panel"><div className="section-heading"><h2><Users size={22}/>All registered students <span className="badge">{students.length}</span></h2><button disabled={!!busy||students.length<2} onClick={train}><RefreshCw size={17}/>Rebuild recognition</button></div><p className="muted">All entries belong to {BATCH_NAME}. Correct any entered SAP ID with the student; original submission details are preserved.</p><input className="full" aria-label="Search registered students" placeholder="Search name or SAP ID" value={search} onChange={e=>setSearch(e.target.value)}/><div className="table-wrap"><table><thead><tr><th>Name</th><th>SAP ID as submitted</th><th>Samples</th><th/></tr></thead><tbody>{students.filter(searchMatch).map(s=><tr key={s.id}><td>{s.name}</td><td>{s.roll}{!/^\d{11}$/.test(s.roll)&&<small className="id-warning">Verify SAP ID</small>}</td><td>{s.faces.length}</td><td><button disabled={!!busy} onClick={()=>{const roll=prompt(`Correct SAP ID for ${s.name}`,s.roll)?.trim();if(!roll||roll===s.roll)return;if(!/^\d{11}$/.test(roll)){setError('Enter the 11-digit SAP ID.');return}if(students.some(x=>x.id!==s.id&&x.roll===roll)){setError('That SAP ID is already registered.');return}void task('Updating SAP ID',async()=>commit({...state,students:state.students.map(x=>x.id===s.id?{...x,roll}:x)}))}}>Edit SAP ID</button></td></tr>)}</tbody></table></div></section></>:<>
@@ -47,3 +49,4 @@ function App(){
 function StudentRow({student,detail,action,onClick}:{student:Student;detail?:string;action:string;onClick:()=>void}){return <div className="board-student"><div><strong>{student.name}</strong><small>SAP ID: {student.roll}{!/^\d{11}$/.test(student.roll)?' · verify ID':''}</small>{detail&&<small className="muted">{detail}</small>}</div><button onClick={onClick} aria-label={`${action}: ${student.name}`}>{action}</button></div>}
 const phoneToken=new URLSearchParams(location.search).get('phone');
 createRoot(document.getElementById('root')!).render(phoneToken?<PhoneCapture token={phoneToken}/>:<Entry><App/></Entry>);
+

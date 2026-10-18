@@ -1,10 +1,10 @@
 # EigenRoll — BTI DS 2022 - 28
 
-Single-batch smartboard attendance with local face detection and PCA + regularized LDA recognition. Django protects the shared student roster and face samples in Postgres.
+Single-batch smartboard attendance with local face detection and PCA + regularized LDA recognition. Django stores the shared student roster and face samples in Postgres. The direct attendance screen reads the current batch names, SAP IDs and recognition vectors; enrollment photographs, pending submissions, historical sessions and all batch edits remain behind teacher management.
 
 ## Classroom workflow
 
-Bookmark https://ai-attendance-taker.vercel.app/ on the smartboard. Sign in with the existing teacher access key, select **Open camera**, allow access, and select a classroom-facing camera if multiple cameras are available. Select **Take photo** to see present names and SAP IDs. Capture more classroom sections as needed; students are counted only once. Check uncertain faces and correct individual marks.
+Bookmark https://ai-attendance-taker.vercel.app/ on the smartboard. Select **Open camera** directly (no teacher access key), allow access, and select a classroom-facing camera if multiple cameras are available. Select **Take photo** to see present names and SAP IDs. Capture more classroom sections as needed; students are counted only once. Check uncertain faces and correct individual marks.
 
 **Clear results** starts over. Results remain in the current tab's memory. No lecture, subject, timetable, automatic batch detection, saved attendance, or history is created. Refreshing or signing out clears attendance results. Existing historical data is retained privately.
 
@@ -14,7 +14,7 @@ Bookmark https://ai-attendance-taker.vercel.app/ on the smartboard. Sign in with
 
 The active class ID is `classroom`, displayed as **BTI DS 2022 - 28**. Submitted IDs are preserved; non-11-digit identifiers are flagged under **Manage batch** for correction. New registrations require approval. A missing or stale recognition model is trained in a Web Worker. Rebuild recognition after changing face samples.
 
-The root URL opens teacher sign-in. Select **Student registration** to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. **Not detected does not mean absent.**
+The root URL opens the attendance camera screen directly. Batch management remains protected at `?page=manage`. Open `?page=register` to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. **Not detected does not mean absent.**
 
 ## Recognition and limitations
 
@@ -42,3 +42,4 @@ python manage.py test
 Existing server variables: `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `EIGENROLL_SERVER_TOKEN`, `EIGENROLL_TEACHER_PASSWORD`. Never expose server credentials to clients. `database/phone_capture.sql` adds the private relay table to an existing database; the initial gateway setup is in `database/schema.sql`. Relay access uses the existing server-only RLS helper.
 
 Deploy to the existing Django Vercel project. Do not commit student data, private models, or credentials.
+

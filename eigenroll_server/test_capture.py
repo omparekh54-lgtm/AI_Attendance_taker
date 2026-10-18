@@ -12,9 +12,14 @@ class PhoneCaptureTests(SimpleTestCase):
         self.session={'id':self.ident,'expires_at':'2099-01-01T00:00:00Z','payload':None}
     def post(self,path,payload):return self.client.post(path,json.dumps(payload),content_type='application/json')
     def sign_in(self):self.client.cookies['eigenroll_teacher']=signing.dumps('teacher',salt='teacher')
-    def test_board_pairing_is_teacher_only(self):
-        for method in ('get','post','delete'):
-            self.assertEqual(getattr(self.client,method)('/api/capture-session',{},content_type='application/json').status_code,401)
+    def test_board_pairing_needs_no_teacher_key_but_is_owner_scoped(self):
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db'):
+            r=self.post('/api/capture-session',{});self.assertEqual(r.status_code,201)
+        self.assertTrue(r.cookies['eigenroll_board']['httponly'])
+        with patch('eigenroll_server.capture.db',return_value=[self.session]):
+            self.assertEqual(self.client.get('/api/capture-session',{'id':self.ident}).status_code,403)
+        for method in ('get','delete'):
+            self.assertEqual(getattr(Client(),method)('/api/capture-session?id='+self.ident).status_code,401)
     def test_phone_token_does_not_grant_roster_access(self):
         with patch('eigenroll_server.capture.db',return_value=[self.session]):
             r=self.client.get(self.path);self.assertEqual(r.status_code,200)
@@ -42,3 +47,4 @@ class PhoneCaptureTests(SimpleTestCase):
     def test_phone_posts_require_csrf(self):
         c=Client(enforce_csrf_checks=True)
         self.assertEqual(c.post(self.path,'{}',content_type='application/json').status_code,403)
+

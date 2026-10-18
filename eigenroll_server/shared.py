@@ -130,3 +130,19 @@ def enrollment(request):
     record={'id':str(uuid.uuid4()),'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces}
     db('eigenroll_enrollments','POST',{'class_id':invite['classId'],'roll':roll.strip(),'payload':record})
     return JsonResponse({'ok':True,'message':'Submitted for teacher review. You can close this page.'},status=201)
+
+
+@ensure_csrf_cookie
+@require_http_methods(['GET'])
+@protected
+def attendance(request):
+    """Read-only current batch for the direct camera workflow."""
+    kind=request.GET.get('kind','students')
+    if kind not in ('students','models'): raise ValueError()
+    params={'kind':'eq.'+kind,'select':'payload','order':'id','limit':5,'offset':max(0,int(request.GET.get('offset',0)))}
+    if kind=='students': params['payload->>classId']='eq.classroom'
+    else: params['id']='eq.models:classroom'
+    rows=db(query('eigenroll_entities',**params))
+    if kind=='students':
+        rows=[{'payload':{k:row['payload'][k] for k in ('id','name','roll','classId')} | {'faces':[{'image':'','vector':face['vector']} for face in row['payload'].get('faces',[])]}} for row in rows]
+    result=JsonResponse({'rows':rows});result['Cache-Control']='no-store';return result

@@ -7,8 +7,10 @@ urlpatterns = [
     path('api/capture-session', capture.board),
     path('api/phone-capture', capture.phone),
     path('api/auth', shared.authentication),
+    path('api/attendance', shared.attendance),
     path('api/workspace', shared.workspace),
     path('api/enrollments', shared.enrollments),
     path('api/enroll', shared.enrollment),
     path('api/config', views.configuration, name='configuration'),
 ]
+
