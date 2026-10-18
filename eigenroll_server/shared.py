@@ -1,5 +1,5 @@
 """Django-only persistence gateway. No database credential reaches the browser."""
-import json, os, hashlib, time, math, uuid
+import json, os, hashlib, time, math, uuid, gzip
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -18,12 +18,14 @@ def enabled():
 
 def db(path, method='GET', body=None, prefer=None):
     if not enabled(): raise GatewayError('Shared registration is awaiting server configuration.')
-    headers={'apikey':os.environ['SUPABASE_PUBLISHABLE_KEY'],'x-eigenroll-server':os.environ['EIGENROLL_SERVER_TOKEN'],'Content-Type':'application/json'}
+    headers={'apikey':os.environ['SUPABASE_PUBLISHABLE_KEY'],'x-eigenroll-server':os.environ['EIGENROLL_SERVER_TOKEN'],'Content-Type':'application/json','Accept-Encoding':'gzip'}
     if prefer: headers['Prefer']=prefer
     req=Request(os.environ['SUPABASE_URL'].rstrip('/')+'/rest/v1/'+path,data=json.dumps(body,allow_nan=False).encode() if body is not None else None,headers=headers,method=method)
     try:
         with urlopen(req,timeout=15) as r:
-            raw=r.read(); return json.loads(raw) if raw else None
+            raw=r.read()
+            if r.headers.get('Content-Encoding')=='gzip':raw=gzip.decompress(raw)
+            return json.loads(raw) if raw else None
     except HTTPError as e:
         if e.code==409: raise GatewayError('This SAP ID has already submitted a registration.',409)
         raise GatewayError('Shared storage could not complete this request.') from e

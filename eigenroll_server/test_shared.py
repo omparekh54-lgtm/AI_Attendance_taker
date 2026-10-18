@@ -108,3 +108,15 @@ class SharedSecurityTests(SimpleTestCase):
             response=self.client.get('/api/attendance?kind=snapshot')
         self.assertEqual(len(response.json()['students']),101)
         self.assertIn('offset=100',db.call_args.args[0])
+
+    def test_database_gateway_accepts_compressed_responses(self):
+        import gzip
+        from unittest.mock import MagicMock
+        from .shared import db
+        response=MagicMock()
+        response.headers={'Content-Encoding':'gzip'}
+        response.read.return_value=gzip.compress(b'[{"id":"example"}]')
+        with patch('eigenroll_server.shared.urlopen') as transport:
+            transport.return_value.__enter__.return_value=response
+            self.assertEqual(db('eigenroll_entities'),[{'id':'example'}])
+            self.assertEqual(transport.call_args.args[0].get_header('Accept-encoding'),'gzip')
