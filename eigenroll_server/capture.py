@@ -61,6 +61,8 @@ def phone(request):
         vector=face.get('vector',[]);image=face.get('image','')
         if not isinstance(image,str) or not image.startswith('data:image/jpeg;base64,') or len(image)>30000:raise ValueError()
         if not isinstance(vector,list) or len(vector)!=576 or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>25 for v in vector):raise ValueError()
+        embedding=face.get('embedding')
+        if embedding is not None and (not isinstance(embedding,list) or len(embedding)!=128 or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>5 for v in embedding)):raise ValueError()
     payload={'id':str(uuid.uuid4()),'faces':[{'face':x['face'],'usable':x['usable']} for x in faces]}
     rows=db(query('eigenroll_capture_sessions',id='eq.'+ident,expires_at='gt.'+now(),payload='is.null'),'PATCH',{'payload':payload},'return=representation')
     if not rows:raise GatewayError('The board is still receiving the previous photo. Wait a moment and try again.',409)

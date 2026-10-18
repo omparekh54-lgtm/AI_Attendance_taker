@@ -12,3 +12,5 @@ __pycache__/
 staticfiles/
 .venv/
 .netlify/
+public/models/identity/
+public/diagnostic.html

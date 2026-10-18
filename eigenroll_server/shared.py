@@ -125,6 +125,8 @@ def enrollment(request):
         if not isinstance(f,dict) or not isinstance(f.get('image'),str) or not f['image'].startswith('data:image/jpeg;base64,') or len(f['image'])>30000: raise GatewayError('Invalid face image.',400)
         v=f.get('vector')
         if not isinstance(v,list) or len(v)!=576 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>25 for x in v):raise GatewayError('Invalid face sample.',400)
+        embedding=f.get('embedding')
+        if embedding is not None and (not isinstance(embedding,list) or len(embedding)!=128 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>5 for x in embedding)):raise GatewayError('Invalid identity features.',400)
     students=db(query('eigenroll_entities',kind='eq.students',select='payload',**{'payload->>classId':'eq.'+invite['classId'],'payload->>roll':'eq.'+roll.strip()}))
     if students: raise GatewayError('This SAP ID is already enrolled. Contact your teacher for updates.',409)
     record={'id':str(uuid.uuid4()),'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces}
@@ -144,5 +146,5 @@ def attendance(request):
     else: params['id']='eq.models:classroom'
     rows=db(query('eigenroll_entities',**params))
     if kind=='students':
-        rows=[{'payload':{k:row['payload'][k] for k in ('id','name','roll','classId')} | {'faces':[{'image':'','vector':face['vector']} for face in row['payload'].get('faces',[])]}} for row in rows]
+        rows=[{'payload':{k:row['payload'][k] for k in ('id','name','roll','classId')} | {'faces':[{'image':'','vector':face['vector'],**({'embedding':face['embedding']} if face.get('embedding') else {})} for face in row['payload'].get('faces',[])]}} for row in rows]
     result=JsonResponse({'rows':rows});result['Cache-Control']='no-store';return result

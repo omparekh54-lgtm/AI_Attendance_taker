@@ -6,3 +6,5 @@ Copyright Google LLC. Used for face detection, not identity recognition.
 React: MIT, Copyright Meta Platforms, Inc. and affiliates.
 Lucide: ISC, https://lucide.dev/license
 Vite: MIT. TypeScript: Apache-2.0.
+
+@vladmandic/face-api 1.7.15: MIT, Copyright Vladimir Mandic and original face-api.js contributors. Recognition and landmark weights are copied from the pinned npm package at build time. Source and license: https://github.com/vladmandic/face-api . No age, gender, or expression inference is loaded or performed.

@@ -48,3 +48,8 @@ class PhoneCaptureTests(SimpleTestCase):
         c=Client(enforce_csrf_checks=True)
         self.assertEqual(c.post(self.path,'{}',content_type='application/json').status_code,403)
 
+
+    def test_phone_rejects_malformed_identity_descriptors(self):
+        face={'face':{'image':'data:image/jpeg;base64,eA==','vector':[0.0]*576,'embedding':[0.0]*127},'usable':True}
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',return_value=[self.session]):
+            self.assertEqual(self.post(self.path,{'faces':[face]}).status_code,400)

@@ -75,3 +75,10 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertEqual(self.client.get('/api/attendance?kind=sessions').status_code,400)
         self.assertEqual(self.post('/api/attendance',{}).status_code,405)
         self.assertEqual(self.post('/api/workspace',{}).status_code,401)
+
+    def test_enrollment_rejects_malformed_identity_features(self):
+        token=signing.dumps({'classId':'classroom'},salt='enrollment')
+        payload={'name':'Student','roll':'1','consent':True,'faces':[{'image':'data:image/jpeg;base64,eA==','vector':[0.0]*576,'embedding':[0.0]*127} for _ in range(20)]}
+        def gateway(path,*args):return True if path.startswith('rpc/') else [{'payload':{'name':'Our classroom'}}]
+        with patch('eigenroll_server.shared.db',side_effect=gateway):
+            self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,400)

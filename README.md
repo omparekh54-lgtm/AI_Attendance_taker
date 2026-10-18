@@ -18,9 +18,13 @@ The root URL opens the attendance camera screen directly. Batch management remai
 
 ## Recognition and limitations
 
-MediaPipe face detection uses overlapping tiles for classroom photos. Eye-based alignment and grayscale normalization produce 576-dimensional vectors, reduced through 16 PCA components and regularized LDA. Distance and ambiguity thresholds reject uncertain identities. Two faces matching the same identity within one photograph both require review. One clear image can suggest attendance; multiple images merge results.
+Recognition is now hybrid: local MediaPipe detection and face alignment, pretrained 128-dimensional identity features from the pinned face-api package, followed by 32-component PCA and regularized LDA. A compact gallery keeps up to eight diverse samples per student. A match needs two close gallery neighbors, an absolute distance limit, a clear margin over the next identity, and agreement with PCA/LDA. The pixel-based Eigenface/Fisherface model remains available as the baseline implementation; the enhanced engine does not silently fall back to it when identity features are missing.
 
-Actual classroom-photo accuracy has not been measured. Enrollment-session holdouts are diagnostics, not classroom benchmarks. Hidden, blurred, distant, or side-on faces may require a closer capture or manual correction. This is not liveness verification.
+Recognition weights are copied from the installed package and served from this application. Only landmark and identity networks are loaded. Captures are processed on the device, and phone captures are transferred only to the connected board. New registrations include identity features. Manage batch can rebuild both models from stored samples; classmates do not need to register again for this upgrade.
+
+Enrollment-session diagnostic: 26 students / 680 samples. With every fifth image held out, the baseline recognized 83/132 correctly and the enhanced model recognized 119/132; neither assigned a wrong identity in that set. Five identity-exclusion folds tested 680 images with their student absent from training; the enhanced model rejected all 680. These are development diagnostics from the same registration sessions, not independent classroom accuracy or a universal false-match guarantee. See `research/recognition-enrollment-evaluation.json`.
+
+Classroom accuracy remains unmeasured. Hidden, blurred, distant, or side-on faces may require another capture or manual correction. This is not liveness verification. Unknown, low-quality, duplicate, or ambiguous matches remain unconfirmed and do not assign absences.
 
 ## Development and verification
 

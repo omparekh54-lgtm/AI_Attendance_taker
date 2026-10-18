@@ -1,0 +1,40 @@
+{
+  "baseline": {
+    "tested": 132,
+    "correct": 83,
+    "wrong": 0,
+    "rejected": 49
+  },
+  "enhanced": {
+    "tested": 132,
+    "correct": 119,
+    "wrong": 0,
+    "rejected": 13
+  },
+  "unknown": {
+    "tested": 680,
+    "incorrectlyAccepted": 0
+  },
+  "limitations": "Holdouts are from the same enrollment sessions. Real classroom accuracy remains unmeasured.",
+  "uploadPipeline": {
+    "singlePhoto": {
+      "tested": 26,
+      "detected": 26,
+      "correct": 25,
+      "wrong": 0,
+      "unresolved": 1
+    },
+    "groupFixture": {
+      "expected": 6,
+      "detected": 6,
+      "correct": 5,
+      "incorrectMatches": 0
+    }
+  },
+  "methodology": {
+    "holdout": "Every fifth enrollment sample per student excluded from training.",
+    "unknown": "Five folds excluding entire student identities from training.",
+    "uploadPipeline": "One held-out cropped photo per student and a six-face composed fixture passed through MediaPipe, alignment, descriptors and matching.",
+    "thresholds": "Conservative development thresholds evaluated on this cohort; these are not independent classroom test results."
+  }
+}
