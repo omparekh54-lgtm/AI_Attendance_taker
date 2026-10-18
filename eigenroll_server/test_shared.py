@@ -82,3 +82,29 @@ class SharedSecurityTests(SimpleTestCase):
         def gateway(path,*args):return True if path.startswith('rpc/') else [{'payload':{'name':'Our classroom'}}]
         with patch('eigenroll_server.shared.db',side_effect=gateway):
             self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,400)
+
+    def test_attendance_snapshot_is_compact_current_batch_and_includes_model(self):
+        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[1.0]*128}]*20}
+        model={'rosterSignature':'s:20','identity':{'extractor':'faceapi-1.7.15-landmarks-v1'}}
+        rows=[{'id':'students:s','kind':'students','payload':student},{'id':'models:classroom','kind':'models','payload':model}, {'id':'students:other','kind':'students','payload':{**student,'classId':'other'}}]
+        with patch('eigenroll_server.shared.db',return_value=rows) as db:
+            response=self.client.get('/api/attendance?kind=snapshot')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(db.call_count,1)
+        snapshot=response.json()
+        self.assertEqual(snapshot['models']['classroom'],model)
+        self.assertEqual(len(snapshot['students']),1)
+        self.assertEqual(len(snapshot['students'][0]['faces']),20)
+        self.assertEqual(snapshot['students'][0]['faces'][0],{'image':'','vector':[]})
+        self.assertNotContains(response,'private-photo')
+        self.assertEqual(snapshot['sessions'],[])
+        self.assertEqual(response['Cache-Control'],'no-store')
+        self.assertLess(len(response.content),2000)
+
+    def test_attendance_snapshot_pages_without_truncating_the_roster(self):
+        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[]}
+        row={'id':'students:s','kind':'students','payload':student}
+        with patch('eigenroll_server.shared.db',side_effect=[[row]*100,[row]]) as db:
+            response=self.client.get('/api/attendance?kind=snapshot')
+        self.assertEqual(len(response.json()['students']),101)
+        self.assertIn('offset=100',db.call_args.args[0])

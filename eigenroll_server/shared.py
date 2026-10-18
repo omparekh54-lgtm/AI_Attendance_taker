@@ -140,6 +140,23 @@ def enrollment(request):
 def attendance(request):
     """Read-only current batch for the direct camera workflow."""
     kind=request.GET.get('kind','students')
+    if kind=='snapshot':
+        # Fetch current-batch records together. Keep paging for larger rosters;
+        # the browser needs sample counts, not enrollment vectors or photos.
+        students=[];models={};offset=0
+        while True:
+            rows=db(query('eigenroll_entities',select='id,kind,payload',order='id',limit=100,offset=offset,
+                **{'or':'(and(kind.eq.students,payload->>classId.eq.classroom),id.eq.models:classroom)'}))
+            for row in rows:
+                payload=row['payload']
+                if row['kind']=='models' and row['id']=='models:classroom':models['classroom']=payload
+                elif row['kind']=='students' and payload.get('classId')=='classroom':
+                    students.append({k:payload[k] for k in ('id','name','roll','classId')} | {'faces':[{'image':'','vector':[]} for _ in payload.get('faces',[])]})
+            if len(rows)<100:break
+            offset+=100
+        result=JsonResponse({'classes':[{'id':'classroom','name':'BTI DS 2022 - 28'}], 'students':students,'models':models,'sessions':[]},json_dumps_params={'separators':(',',':')})
+        result['Cache-Control']='no-store'
+        return result
     if kind not in ('students','models'): raise ValueError()
     params={'kind':'eq.'+kind,'select':'payload','order':'id','limit':5,'offset':max(0,int(request.GET.get('offset',0)))}
     if kind=='students': params['payload->>classId']='eq.classroom'

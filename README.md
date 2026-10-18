@@ -26,6 +26,10 @@ Enrollment-session diagnostic: 26 students / 680 samples. With every fifth image
 
 Classroom accuracy remains unmeasured. Hidden, blurred, distant, or side-on faces may require another capture or manual correction. This is not liveness verification. Unknown, low-quality, duplicate, or ambiguous matches remain unconfirmed and do not assign absences.
 
+## Startup performance
+
+The attendance screen renders while the current batch loads. One compact snapshot request supplies the roster, sample counts, and saved recognition model; photos and training vectors are omitted. A missing or stale model still loads the training samples through the original endpoint. Camera detection, phone pairing, registration, and batch management load on demand. API responses use gzip when supported and remain uncached.
+
 ## Development and verification
 
 ```bash
