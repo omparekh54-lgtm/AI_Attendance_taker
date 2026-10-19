@@ -13,4 +13,5 @@ staticfiles/
 .venv/
 .netlify/
 public/models/identity/
+public/models/detector/
 public/diagnostic.html

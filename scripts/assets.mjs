@@ -5,3 +5,6 @@ try {await access('public/models/face-detector.tflite')} catch { const response=
 // Version-pinned recognition weights are shipped in the npm package, not fetched at runtime.
 await mkdir('public/models/identity',{recursive:true});
 for(const name of ['face_recognition_model','face_landmark_68_tiny_model'])for(const suffix of ['.bin','-weights_manifest.json'])await cp(`node_modules/@vladmandic/face-api/model/${name}${suffix}`,`public/models/identity/${name}${suffix}`);
+// Group-photo face detector, used only for classroom captures.
+await mkdir('public/models/detector',{recursive:true});
+for(const suffix of ['.bin','-weights_manifest.json'])await cp(`node_modules/@vladmandic/face-api/model/ssd_mobilenetv1_model${suffix}`,`public/models/detector/ssd_mobilenetv1_model${suffix}`);

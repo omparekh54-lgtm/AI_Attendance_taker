@@ -14,9 +14,13 @@ Bookmark https://ai-attendance-taker.vercel.app/ on the smartboard. Select **Ope
 
 The active class ID is `classroom`, displayed as **BTI DS 2022 - 28**. Submitted IDs are preserved; non-11-digit identifiers are flagged under **Manage batch** for correction. New registrations require approval. A missing or stale recognition model is trained in a Web Worker. Rebuild recognition after changing face samples.
 
-The root URL opens the attendance camera screen directly. Batch management remains protected at `?page=manage`. Open `?page=register` to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. **Not detected does not mean absent.**
+The root URL opens the attendance camera screen directly. Batch management remains protected at `?page=manage`. Open `?page=register` to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. Students not found in any capture are listed as absent; check the faces under review before finalising.
 
 ## Recognition and limitations
+
+Classroom photos use a group face detector (SSD MobileNet v1 from the pinned face-api package) that scans the full frame and two scales of overlapping tiles, so small back-row faces are found. MediaPipe's short-range BlazeFace, which only sees faces near the camera, is still used for enrollment selfies. On a synthetic classroom test (six group photos tiled into one frame, 23 faces), detection went from 1/23 to 22/23 at 1080p and from 3/23 to 22/23 at 4K. Identity features are computed from a sharper crop of up to 224 px taken from the original photo.
+
+After a capture, the board shows **X of N present** and **Y absent** against the registered batch. Faces that could not be identified are listed for review, and the teacher can mark a missed student present.
 
 Recognition is now hybrid: local MediaPipe detection and face alignment, pretrained 128-dimensional identity features from the pinned face-api package, followed by 32-component PCA and regularized LDA. A compact gallery keeps up to eight diverse samples per student. A match needs two close gallery neighbors, an absolute distance limit, a clear margin over the next identity, and agreement with PCA/LDA. The pixel-based Eigenface/Fisherface model remains available as the baseline implementation; the enhanced engine does not silently fall back to it when identity features are missing.
 
