@@ -14,15 +14,23 @@ Bookmark https://ai-attendance-taker.vercel.app/ on the smartboard. Select **Ope
 
 The active class ID is `classroom`, displayed as **BTI DS 2022 - 28**. Submitted IDs are preserved; non-11-digit identifiers are flagged under **Manage batch** for correction. New registrations require approval. A missing or stale recognition model is trained in a Web Worker. Rebuild recognition after changing face samples.
 
-The root URL opens the attendance camera screen directly. Batch management remains protected at `?page=manage`. Open `?page=register` to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. Students not found in any capture are listed as absent; check the faces under review before finalising.
+The root URL opens the attendance board. It asks for the teacher access key once per device ("Keep this device signed in for 30 days" is on by default for the smartboard), because the board loads student names, SAP IDs and face templates; `/api/attendance` returns 401 without a teacher session. Batch management is at `?page=manage`. Open `?page=register` to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. Students not found in any capture are listed as absent; check the faces under review before finalising.
 
 ## Recognition and limitations
 
 Classroom photos use a group face detector (SSD MobileNet v1 from the pinned face-api package) that scans the full frame and two scales of overlapping tiles, so small back-row faces are found. MediaPipe's short-range BlazeFace, which only sees faces near the camera, is still used for enrollment selfies. On a synthetic classroom test (six group photos tiled into one frame, 23 faces), detection went from 1/23 to 22/23 at 1080p and from 3/23 to 22/23 at 4K. Identity features are computed from a sharper crop of up to 224 px taken from the original photo.
 
-After a capture, the board shows **X of N present** and **Y absent** against the registered batch. Faces that could not be identified are listed for review, and the teacher can mark a missed student present.
+After a capture, the board shows **X of N present** and **Y absent** against the registered batch, with a progress bar while the photo is scanned.
 
-Recognition is now hybrid: local MediaPipe detection and face alignment, pretrained 128-dimensional identity features from the pinned face-api package, followed by 32-component PCA and regularized LDA. A compact gallery keeps up to eight diverse samples per student. A match needs two close gallery neighbors, an absolute distance limit, a clear margin over the next identity, and agreement with PCA/LDA. The pixel-based Eigenface/Fisherface model remains available as the baseline implementation; the enhanced engine does not silently fall back to it when identity features are missing.
+Faces the system is not sure about appear under **Check these faces**:
+- **Is this *name*? → Yes**: the closest student is likely but not certain enough to mark automatically (distance ≤ 0.56, ratio ≤ 0.92, margin ≥ 0.035). One tap marks them present.
+- **Who is this?**: a picker listing the closest students first.
+- **Not a student**: dismisses visitors and background faces.
+- Faces that look like a student who is already present (for example the same person in a second photo) are hidden automatically.
+
+Results are kept on the device for the rest of the day, so a refresh does not lose them. **Download CSV** exports name, SAP ID, status and how each student was marked; **Copy absent list** copies a ready-to-paste list; **Start new attendance** clears the screen for the next class.
+
+Recognition is now hybrid: local MediaPipe detection and face alignment, pretrained 128-dimensional identity features from the pinned face-api package, followed by 32-component PCA and regularized LDA. A compact gallery keeps up to eight diverse samples per student. A match needs two close gallery neighbors, an absolute distance limit, a clear margin over the next identity, and agreement with PCA/LDA. A face is also accepted when it is within 0.47 of a student who is clearly ahead of everyone else (ratio ≤ 0.75, margin ≥ 0.12) and PCA/LDA agrees. On the class's 208 enrolment templates (leave-one-out and leave-one-student-out) this added correct matches with 0 wrong students and 0 unregistered faces accepted; on a synthetic group photo it raised automatic matches of enrolled people from 3 to 6 of 17, with 0 of 22 strangers accepted or suggested. In one photo, each student is given to at most one face: if two faces match the same student, the clearly closer one keeps the match and the rest go to review. The pixel-based Eigenface/Fisherface model remains available as the baseline implementation; the enhanced engine does not silently fall back to it when identity features are missing.
 
 Recognition weights are copied from the installed package and served from this application. Only landmark and identity networks are loaded. Captures are processed on the device, and phone captures are transferred only to the connected board. New registrations include identity features. Manage batch can rebuild both models from stored samples; classmates do not need to register again for this upgrade.
 

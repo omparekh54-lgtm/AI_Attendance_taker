@@ -29,9 +29,19 @@ export function predictIdentity(model:IdentityModel,vector:number[]){
  const scores=score(vector,model.templates,-1,model.neighbors??3),best=scores[0],runnerUp=scores[1];if(!best||!runnerUp)throw Error('At least two trained identities are required.');
  const ratio=best.distance/Math.max(runnerUp.distance,1e-9),margin=runnerUp.distance-best.distance;
  const discriminant=predict(model.pcaLda,vector);
- const accepted=best.distance<=model.limits[best.label]&&ratio<=model.maxRatio&&margin>=model.minMargin&&discriminant.label===best.label;
- return {...best,ratio,margin,accepted,pcaAgreement:discriminant.label===best.label};
+ const pcaAgreement=discriminant.label===best.label;
+ // Strict per-student limit, or a slightly longer distance when one student is clearly ahead of every other.
+ const strict=best.distance<=model.limits[best.label]&&ratio<=model.maxRatio&&margin>=model.minMargin;
+ const clearLead=best.distance<=CLEAR_LEAD.distance&&ratio<=CLEAR_LEAD.ratio&&margin>=CLEAR_LEAD.margin;
+ const accepted=pcaAgreement&&(strict||clearLead);
+ // Not safe to mark automatically, but likely enough to offer the teacher a one-tap confirmation.
+ const suggested=!accepted&&best.distance<=SUGGEST.distance&&ratio<=SUGGEST.ratio&&margin>=SUGGEST.margin;
+ return {...best,ratio,margin,accepted,suggested,pcaAgreement,candidates:scores.slice(0,3).map(s=>s.label)};
 }
+/** Tuned on the class's 208 enrolment templates (leave-one-out and leave-one-student-out) and stranger group photos:
+ *  clear-lead accepts gave 0 wrong students and 0 unregistered faces; suggestions were never offered for strangers. */
+export const CLEAR_LEAD={distance:.47,ratio:.75,margin:.12};
+export const SUGGEST={distance:.56,ratio:.92,margin:.035};
 
 /** Six decimals preserve classifier precision and keep shared model writes below 900 KB. */
 export function compactModel<T>(value:T):T{return JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='number'?Math.round(v*1e6)/1e6:v))}

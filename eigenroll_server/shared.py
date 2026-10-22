@@ -32,8 +32,15 @@ def db(path, method='GET', body=None, prefer=None):
     except (URLError,TimeoutError) as e: raise GatewayError('Shared storage is temporarily unavailable. Please retry.') from e
 
 def query(table,**params): return table+'?'+urlencode(params)
+SESSION_SECONDS=8*3600
+REMEMBER_SECONDS=30*24*3600
 def teacher(request):
-    try: return signing.loads(request.COOKIES.get('eigenroll_teacher',''),salt='teacher',max_age=8*3600)=='teacher'
+    # 'teacher' is an 8-hour session; 'teacher:remember' keeps a classroom smartboard signed in for 30 days.
+    cookie=request.COOKIES.get('eigenroll_teacher','')
+    try:
+        value=signing.loads(cookie,salt='teacher',max_age=REMEMBER_SECONDS)
+        if value=='teacher:remember': return True
+        return value=='teacher' and signing.loads(cookie,salt='teacher',max_age=SESSION_SECONDS)=='teacher'
     except signing.BadSignature: return False
 
 def data(request):
@@ -68,8 +75,10 @@ def authentication(request):
     try:
         if not enabled(): raise GatewayError('Teacher sign-in is awaiting server configuration.')
         limit(request,'login',20)
-        if not constant_time_compare(str(data(request).get('password','')),os.environ['EIGENROLL_TEACHER_PASSWORD']): raise GatewayError('Incorrect teacher access key.',401)
-        r=JsonResponse({'teacher':True});r.set_cookie('eigenroll_teacher',signing.dumps('teacher',salt='teacher'),max_age=8*3600,httponly=True,secure=bool(os.environ.get('VERCEL')),samesite='Strict');return r
+        body=data(request)
+        if not constant_time_compare(str(body.get('password','')),os.environ['EIGENROLL_TEACHER_PASSWORD']): raise GatewayError('Incorrect teacher access key.',401)
+        remember=body.get('remember') is True
+        r=JsonResponse({'teacher':True});r.set_cookie('eigenroll_teacher',signing.dumps('teacher:remember' if remember else 'teacher',salt='teacher'),max_age=REMEMBER_SECONDS if remember else SESSION_SECONDS,httponly=True,secure=bool(os.environ.get('VERCEL')),samesite='Strict');return r
     except GatewayError as e: return JsonResponse({'error':str(e)},status=e.status)
 
 @require_http_methods(['GET','POST','DELETE'])
@@ -140,7 +149,8 @@ def enrollment(request):
 @require_http_methods(['GET'])
 @protected
 def attendance(request):
-    """Read-only current batch for the direct camera workflow."""
+    """Read-only current batch for the direct camera workflow. Names, SAP IDs and face templates are teacher-only."""
+    if not teacher(request): raise GatewayError('Teacher sign-in required.',401)
     kind=request.GET.get('kind','students')
     if kind=='snapshot':
         # Fetch current-batch records together. Keep paging for larger rosters;

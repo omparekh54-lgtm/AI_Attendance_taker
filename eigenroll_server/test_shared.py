@@ -20,6 +20,21 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertTrue(response.cookies['eigenroll_teacher']['httponly'])
         self.assertEqual(response.cookies['eigenroll_teacher']['samesite'],'Strict')
         self.assertTrue(self.client.get('/api/auth').json()['teacher'])
+    def test_roster_and_face_templates_are_teacher_only(self):
+        with patch('eigenroll_server.shared.db',return_value=[]) as db:
+            for kind in ['snapshot','students','models']:
+                response=self.client.get('/api/attendance?kind='+kind)
+                self.assertEqual(response.status_code,401)
+        db.assert_not_called()
+    def test_remembered_smartboard_stays_signed_in_and_session_expires(self):
+        with patch('eigenroll_server.shared.db',return_value=True):
+            response=self.post('/api/auth',{'password':'teacher-test-key','remember':True})
+        self.assertEqual(response.cookies['eigenroll_teacher']['max-age'],30*24*3600)
+        with patch('django.core.signing.time.time',side_effect=lambda:__import__('time').time_ns()/1e9+10*24*3600):
+            self.assertTrue(self.client.get('/api/auth').json()['teacher'])
+        self.login()
+        with patch('django.core.signing.time.time',side_effect=lambda:__import__('time').time_ns()/1e9+9*3600):
+            self.assertFalse(self.client.get('/api/auth').json()['teacher'])
     def test_tampered_teacher_cookie_is_rejected(self):
         self.client.cookies['eigenroll_teacher']='forged'
         self.assertEqual(self.client.get('/api/workspace').status_code,401)
@@ -68,12 +83,15 @@ class SharedSecurityTests(SimpleTestCase):
 
     def test_direct_attendance_is_read_only_and_omits_enrollment_images(self):
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[0.0]*576}]}
+        self.assertEqual(self.client.get('/api/attendance').status_code,401)
+        self.login()
         with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]):
             r=self.client.get('/api/attendance');self.assertEqual(r.status_code,200)
         self.assertEqual(r.json()['rows'][0]['payload']['faces'][0]['image'],'')
         self.assertEqual(r['Cache-Control'],'no-store')
         self.assertEqual(self.client.get('/api/attendance?kind=sessions').status_code,400)
         self.assertEqual(self.post('/api/attendance',{}).status_code,405)
+        self.client.cookies.clear()
         self.assertEqual(self.post('/api/workspace',{}).status_code,401)
 
     def test_enrollment_rejects_malformed_identity_features(self):
@@ -87,6 +105,7 @@ class SharedSecurityTests(SimpleTestCase):
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[1.0]*128}]*20}
         model={'rosterSignature':'s:20','identity':{'extractor':'faceapi-1.7.15-landmarks-v1'}}
         rows=[{'id':'students:s','kind':'students','payload':student},{'id':'models:classroom','kind':'models','payload':model}, {'id':'students:other','kind':'students','payload':{**student,'classId':'other'}}]
+        self.login()
         with patch('eigenroll_server.shared.db',return_value=rows) as db:
             response=self.client.get('/api/attendance?kind=snapshot')
         self.assertEqual(response.status_code,200)
@@ -104,6 +123,7 @@ class SharedSecurityTests(SimpleTestCase):
     def test_attendance_snapshot_pages_without_truncating_the_roster(self):
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[]}
         row={'id':'students:s','kind':'students','payload':student}
+        self.login()
         with patch('eigenroll_server.shared.db',side_effect=[[row]*100,[row]]) as db:
             response=self.client.get('/api/attendance?kind=snapshot')
         self.assertEqual(len(response.json()['students']),101)
