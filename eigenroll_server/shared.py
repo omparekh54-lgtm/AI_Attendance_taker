@@ -43,8 +43,8 @@ def teacher(request):
         return value=='teacher' and signing.loads(cookie,salt='teacher',max_age=SESSION_SECONDS)=='teacher'
     except signing.BadSignature: return False
 
-def data(request):
-    if len(request.body)>900000: raise GatewayError('Submission is too large. Use at most 30 face samples.',413)
+def data(request,max_bytes=900000,too_large='Submission is too large. Use at most 30 face samples.'):
+    if len(request.body)>max_bytes: raise GatewayError(too_large,413)
     try:
         result=json.loads(request.body)
         if not isinstance(result,dict): raise ValueError()

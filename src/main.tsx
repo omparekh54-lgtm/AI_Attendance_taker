@@ -49,7 +49,7 @@ function App() {
     [observations, setObservations] = useState<Observation[]>([]),
     [manual, setManual] = useState<Record<string, boolean>>({}),
     [startedAt, setStartedAt] = useState('');
-  const results = useRef<HTMLElement>(null), lock = useRef(false), currentModel = useRef<Model | undefined>(undefined), restored = useRef(false);
+  const results = useRef<HTMLElement>(null), lock = useRef(false), currentModel = useRef<Model | undefined>(undefined), restored = useRef(false), captureCounter = useRef(0);
 
   const students = useMemo(() => state.students.filter(s => s.classId === BATCH_ID).sort((a, b) => a.name.localeCompare(b.name)), [state.students]);
   const byId = useMemo(() => new Map(students.map(s => [s.id, s])), [students]);
@@ -69,6 +69,7 @@ function App() {
     if (!saved) return;
     const known = new Set(students.map(s => s.id));
     setCaptures(saved.captures);
+    captureCounter.current = Math.max(saved.captures, ...saved.observations.map(o => o.capture ?? 0));
     setStartedAt(saved.startedAt);
     setObservations(saved.observations.filter(o => !o.studentId || known.has(o.studentId)));
     setManual(Object.fromEntries(Object.entries(saved.manual).filter(([id]) => known.has(id))));
@@ -125,10 +126,11 @@ function App() {
     void train();
   }, [loaded, students, validModel]);
 
-  function receive(faces: DetectedFace[]) {
+  function receive(faces: DetectedFace[], kind: 'photo' | 'video' = 'photo') {
     const active = currentModel.current;
     if (!active) throw Error('Recognition is not ready. Prepare the model first.');
-    const batch = recognizeCapture(active, faces);
+    const capture = ++captureCounter.current;
+    const batch = recognizeCapture(active, faces).map(o => ({...o, capture}));
     setObservations(prev => [...prev, ...batch].slice(-1000));
     setCaptures(n => n + 1);
     if (!startedAt) setStartedAt(new Date().toISOString());
@@ -136,10 +138,10 @@ function App() {
       confirm = batch.filter(o => !o.studentId && o.suggestion).length,
       review = batch.filter(o => !o.studentId && !o.suggestion).length;
     setNotice([
-      `${faces.length} face${faces.length === 1 ? '' : 's'} found`,
+      kind === 'video' ? `Video: ${faces.length} ${faces.length === 1 ? 'person' : 'people'} found` : `${faces.length} face${faces.length === 1 ? '' : 's'} found`,
       `${matched} recognised`,
       confirm ? `${confirm} to confirm with one tap` : '',
-      review ? `${review} not recognised` : '',
+      review ? `${review} not recognised (usually unregistered)` : '',
     ].filter(Boolean).join(' · ') + '.');
   }
   function startNew() {
@@ -158,8 +160,15 @@ function App() {
   const present = students.filter(isPresent), absent = students.filter(s => !isPresent(s));
   // A face that most likely belongs to someone already present (e.g. caught again in a second photo) needs no review.
   const alreadyCounted = (o: Observation) => !!o.suggestion && !!byId.get(o.suggestion) && isPresent(byId.get(o.suggestion)!);
-  const unresolved = observations.filter(o => !o.studentId && !alreadyCounted(o)).sort((a, b) => Number(!!b.suggestion) - Number(!!a.suggestion));
-  const hiddenRepeats = observations.filter(o => !o.studentId && alreadyCounted(o)).length;
+  const unresolved = observations.filter(o => !o.studentId && !alreadyCounted(o));
+  // Likely students: one card per suggested student (closest face), noting how many separate photos agreed.
+  const seenIn = new Map<string, Set<number>>();
+  for (const o of unresolved) if (o.suggestion) seenIn.set(o.suggestion, (seenIn.get(o.suggestion) ?? new Set()).add(o.capture ?? 0));
+  const bestFace = new Map<string, Observation>();
+  for (const o of unresolved) if (o.suggestion && (!bestFace.has(o.suggestion) || (o.distance ?? 1) < (bestFace.get(o.suggestion)!.distance ?? 1))) bestFace.set(o.suggestion, o);
+  const toConfirm = [...bestFace.values()].sort((a, b) => seenIn.get(b.suggestion!)!.size - seenIn.get(a.suggestion!)!.size || (a.distance ?? 1) - (b.distance ?? 1));
+  const notRecognised = unresolved.filter(o => !o.suggestion);
+  const hiddenRepeats = observations.filter(o => !o.studentId && alreadyCounted(o)).length + unresolved.filter(o => o.suggestion && bestFace.get(o.suggestion) !== o).length;
   const howMarked = (s: Student) => (manual[s.id] === true ? 'Marked by teacher' : observations.some(o => o.studentId === s.id && o.confirmed) ? 'Confirmed by teacher' : 'Recognised from photo');
   const searchMatch = (s: Student) => (s.name + ' ' + s.roll).toLowerCase().includes(search.toLowerCase());
 
@@ -253,7 +262,7 @@ function App() {
               <div className="section-heading">
                 <div>
                   <h2>Class attendance</h2>
-                  <p className="muted">{captures ? `${captures} photo${captures === 1 ? '' : 's'} combined · saved on this device until you start new attendance` : 'Take a photo to start. Several photos can be combined.'}</p>
+                  <p className="muted">{captures ? `${captures} capture${captures === 1 ? '' : 's'} combined · saved on this device until you start new attendance` : 'Take a photo or video to start. Several captures can be combined.'}</p>
                 </div>
                 <div className="result-actions">
                   <button disabled={!captures} onClick={exportCsv}><Download size={17}/>Download CSV</button>
@@ -264,20 +273,31 @@ function App() {
               <div className="board-counts">
                 <div className="count-present"><strong>{present.length}<small> / {students.length}</small></strong><span>Present</span></div>
                 <div className="count-absent"><strong>{absent.length}</strong><span>{captures ? 'Absent' : 'Not checked yet'}</span></div>
-                <div className={unresolved.length ? 'count-review' : ''}><strong>{unresolved.length}</strong><span>Faces to check</span></div>
+                <div className={toConfirm.length ? 'count-review' : ''}><strong>{toConfirm.length}</strong><span>To confirm</span></div>
               </div>
 
-              {unresolved.length > 0 && (
+              {toConfirm.length > 0 && (
                 <section className="panel review-panel">
-                  <h3>Check these faces <span className="badge">{unresolved.length}</span></h3>
-                  <p className="muted">Tap <b>Yes</b> if the name is right, or pick the student. Use <b>Not a student</b> for visitors or background faces.{hiddenRepeats ? ` ${hiddenRepeats} face${hiddenRepeats === 1 ? '' : 's'} that looked like students already present ${hiddenRepeats === 1 ? 'is' : 'are'} hidden.` : ''}</p>
+                  <h3>Confirm these students <span className="badge">{toConfirm.length}</span></h3>
+                  <p className="muted">Likely matches that were not certain enough to mark on their own. Tap <b>Yes</b> if the name is right, or pick the right student.{hiddenRepeats ? ` ${hiddenRepeats} repeat face${hiddenRepeats === 1 ? '' : 's'} of the same students ${hiddenRepeats === 1 ? 'is' : 'are'} hidden.` : ''}</p>
                   <div className="review-faces">
-                    {unresolved.map(o => (
+                    {toConfirm.map(o => (
+                      <ReviewFace key={o.id} observation={o} seenIn={seenIn.get(o.suggestion!)!.size} students={students} byId={byId} isPresent={isPresent}
+                        onAssign={id => assign(o.id, id)} onDismiss={() => setObservations(prev => prev.filter(x => x.suggestion !== o.suggestion || x.studentId))}/>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {notRecognised.length > 0 && (
+                <details className="panel review-panel other-faces">
+                  <summary><b>{notRecognised.length} other face{notRecognised.length === 1 ? '' : 's'} not recognised</b> · usually unregistered students or visitors. Open to name any of them.</summary>
+                  <div className="review-faces">
+                    {notRecognised.map(o => (
                       <ReviewFace key={o.id} observation={o} students={students} byId={byId} isPresent={isPresent}
                         onAssign={id => assign(o.id, id)} onDismiss={() => setObservations(prev => prev.filter(x => x.id !== o.id))}/>
                     ))}
                   </div>
-                </section>
+                </details>
               )}
 
               <input className="full" placeholder="Find a student by name or SAP ID" aria-label="Find a student by name or SAP ID" value={search} onChange={e => setSearch(e.target.value)}/>
@@ -305,8 +325,8 @@ function App() {
   );
 }
 
-function ReviewFace({observation: o, students, byId, isPresent, onAssign, onDismiss}: {
-  observation: Observation; students: Student[]; byId: Map<string, Student>; isPresent: (s: Student) => boolean;
+function ReviewFace({observation: o, seenIn = 1, students, byId, isPresent, onAssign, onDismiss}: {
+  observation: Observation; seenIn?: number; students: Student[]; byId: Map<string, Student>; isPresent: (s: Student) => boolean;
   onAssign: (studentId: string) => void; onDismiss: () => void;
 }) {
   const suggested = o.suggestion ? byId.get(o.suggestion) : undefined;
@@ -318,7 +338,7 @@ function ReviewFace({observation: o, students, byId, isPresent, onAssign, onDism
       <img src={o.image} alt="Face from the classroom photo"/>
       {suggested && !isPresent(suggested) ? (
         <>
-          <p className="suggestion">Is this <strong>{suggested.name}</strong>?</p>
+          <p className="suggestion">Is this <strong>{suggested.name}</strong>?{seenIn > 1 && <span className="seen-in">Seen in {seenIn} photos</span>}</p>
           <button className="primary" onClick={() => onAssign(suggested.id)}><Check size={16}/>Yes</button>
         </>
       ) : (

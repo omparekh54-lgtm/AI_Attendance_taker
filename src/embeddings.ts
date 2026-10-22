@@ -38,4 +38,24 @@ export async function describeFace(source:HTMLCanvasElement|HTMLImageElement){
   return vector;
  });queue=work.catch(()=>{});return work;
 }
+/** Full 68-point landmark model: better alignment for small, angled classroom faces. Loaded on first classroom scan. */
+let fullLandmarks:Promise<typeof import('@vladmandic/face-api')>|undefined;
+function classroomReady(){return fullLandmarks??=(async()=>{const api=await embeddingReady();await api.nets.faceLandmark68Net.loadFromUri(`${import.meta.env.BASE_URL}models/identity`);return api})().catch(e=>{fullLandmarks=undefined;throw Error('Recognition model could not load. Check your connection and retry. '+(e as Error).message)})}
+function mirrored(source:HTMLCanvasElement){const c=document.createElement('canvas');c.width=source.width;c.height=source.height;const x=c.getContext('2d')!;x.translate(c.width,0);x.scale(-1,1);x.drawImage(source,0,0);return c}
+/** Classroom-photo descriptor: full-landmark alignment, averaged with the mirror image.
+ *  Compatible with enrolment descriptors (same recognition network); on labelled group photos it doubled
+ *  automatic matches (5 to 10 of 22) with no wrong students and no strangers accepted. */
+export async function describeClassroomFace(source:HTMLCanvasElement){
+ const work=queue.then(async()=>{
+  const api=await classroomReady();
+  const one=async(c:HTMLCanvasElement)=>{const landmarks=await api.detectFaceLandmarks(c);if(Array.isArray(landmarks))throw Error('Expected one aligned face crop.');
+   const aligned=await api.extractFaces(c,[landmarks.align()]);if(!aligned[0])throw Error('The face could not be aligned.');return Array.from(await api.computeFaceDescriptor(aligned[0]) as Float32Array)};
+  const a=await one(source),b=await one(mirrored(source));
+  const sum=a.map((v,i)=>v+b[i]),scale=Math.hypot(...a)/Math.max(Math.hypot(...sum),1e-9);
+  const vector=sum.map(v=>v*scale);
+  if(vector.length!==128||vector.some(v=>!Number.isFinite(v)))throw Error('Could not extract valid face features.');
+  return vector;
+ });
+ queue=work.catch(()=>{});return work;
+}
 export async function describeFaceDataUrl(url:string){const image=new Image();image.src=url;await image.decode();return describeFace(image)}

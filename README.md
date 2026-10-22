@@ -22,11 +22,30 @@ Classroom photos use a group face detector (SSD MobileNet v1 from the pinned fac
 
 After a capture, the board shows **X of N present** and **Y absent** against the registered batch, with a progress bar while the photo is scanned.
 
-Faces the system is not sure about appear under **Check these faces**:
-- **Is this *name*? → Yes**: the closest student is likely but not certain enough to mark automatically (distance ≤ 0.56, ratio ≤ 0.92, margin ≥ 0.035). One tap marks them present.
-- **Who is this?**: a picker listing the closest students first.
-- **Not a student**: dismisses visitors and background faces.
-- Faces that look like a student who is already present (for example the same person in a second photo) are hidden automatically.
+### Big classes, several photos and video
+
+A class photo can hold 60+ people; only registered students can be named, and everyone else is left alone.
+
+- **Photos:** take one photo, or 2–3 (left, middle, right) for a large room. Every capture is combined and no student is counted twice.
+- **Video:** record up to 20 s on the board (or upload up to 60 s). About one frame per second is scanned; each face is followed across frames by position, with camera-pan compensation and a small appearance check so neighbouring seats are not confused. Each person's identity features are averaged over their three largest views, then recognised once. Someone who leaves the view and comes back is not treated as a conflict.
+- **Phone:** a phone capture can now send up to 150 faces (it previously stopped at 40).
+- **Faces from 32 px wide are recognised** (was 45 px). Classroom faces use the full 68-point landmark model and are averaged with their mirror image; enrolment features are unchanged, so no one needs to re-register.
+
+After a capture:
+- **Confirm these students**: one card per likely student who was not certain enough to mark automatically, with how many separate captures agreed (for example "Seen in 4 photos"). One tap marks them present. A student who is the likely match in several photos is listed first.
+- **Other faces not recognised** are folded away (usually unregistered students or visitors) and can be opened to name anyone.
+- Faces that look like a student already present are hidden automatically.
+
+**Measured on labelled photos** (8 people enrolled from 5 portraits each, alongside the 26 real students; tested on 5 different group photos of them, crowd photos of about 45 strangers, a 12 MP class photo of 83 faces, and a panning class video):
+
+| Scenario | Marked automatically | One-tap confirmations | Missed | Wrong student marked |
+|---|---|---|---|---|
+| 5 separate group photos combined (7 people present) | 5 of 7 | 2 (seen in 3–4 photos) | 0 | 0 |
+| One 12 MP photo, 7 enrolled among 75 strangers | 4 | 2 | 1 | 0 |
+| 10 s panning video, 7 enrolled among ~100 strangers | 5 | 1 | 1 | 0 |
+| Strangers (121 faces) | 0 accepted | 8 offered as suggestions | – | 0 |
+
+Per face, the new classroom features doubled automatic matches on the group photos (5 → 10 of 22) with no wrong students. Linking unknown faces across photos by similarity alone was rejected: in testing it would have marked an unregistered classmate as someone else, so cross-photo agreement is shown to the teacher instead of being auto-marked.
 
 Results are kept on the device for the rest of the day, so a refresh does not lose them. **Download CSV** exports name, SAP ID, status and how each student was marked; **Copy absent list** copies a ready-to-paste list; **Start new attendance** clears the screen for the next class.
 

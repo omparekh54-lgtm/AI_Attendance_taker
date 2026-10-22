@@ -15,3 +15,24 @@ export function groupTileSizes(w:number,h:number){
  for(const size of [Math.round(short/1.5),Math.round(short/2.5)])if(size>=480&&!sizes.includes(size))sizes.push(size);
  return sizes;
 }
+
+/** Smallest face (px) the classroom scan tries to recognise. On labelled group photos shrunk to 36 px faces,
+ *  recognition matched 45 px faces with no wrong students; at 28 px detection and identity both broke down. */
+export const MIN_RECOGNISABLE_FACE_PX = 32;
+type Box = {originX: number; originY: number; width: number; height: number};
+/** Keep one box per face: drop a lower-scoring box that mostly overlaps a kept one or has its centre inside it. */
+export function dedupeBoxes<T extends {score: number; box: Box}>(items: T[]): T[] {
+  const kept: T[] = [];
+  for (const item of [...items].sort((a, b) => b.score - a.score)) {
+    const a = item.box;
+    const duplicate = kept.some(({box: b}) => {
+      const ix = Math.max(0, Math.min(a.originX + a.width, b.originX + b.width) - Math.max(a.originX, b.originX)),
+        iy = Math.max(0, Math.min(a.originY + a.height, b.originY + b.height) - Math.max(a.originY, b.originY));
+      const overlap = ix * iy / Math.min(a.width * a.height, b.width * b.height);
+      const inside = (p: Box, q: Box) => { const cx = p.originX + p.width / 2, cy = p.originY + p.height / 2; return cx > q.originX && cx < q.originX + q.width && cy > q.originY && cy < q.originY + q.height; };
+      return overlap > 0.4 || inside(a, b) || inside(b, a);
+    });
+    if (!duplicate) kept.push(item);
+  }
+  return kept;
+}

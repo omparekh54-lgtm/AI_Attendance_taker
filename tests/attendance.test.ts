@@ -9,3 +9,9 @@ test('Unusable and unfamiliar faces never mark an enrolled student present',()=>
 test('Roster signature ignores roster order and changes with sample count',()=>{const a={id:'a',faces:[face(0).face]},b={id:'b',faces:[face(1).face]};assert.equal(rosterSignature([a,b]),rosterSignature([b,a]));assert.notEqual(rosterSignature([a,b]),rosterSignature([{...a,faces:[]},b]))});
 
 test('Tiny face crops report identity uncertainty and request the original photo',()=>{const unknown=face(0);unknown.sourceWidth=unknown.sourceHeight=96;unknown.face.vector=Array.from({length:64},(_,i)=>5*Math.sin(i*3.8));const result=recognizeCapture(model,[unknown]);assert.equal(result[0].studentId,undefined);assert.match(result[0].reason!,/Low-resolution/)});
+import {trainIdentity} from '../src/identity';
+const idv=(label:number,sample:number)=>Array.from({length:128},(_,i)=>.2*Math.sin(i*.31+label*2)+.003*Math.cos(i+sample));
+const idModel={...train([0,1,2].flatMap(l=>Array.from({length:8},(_,j)=>({label:String(l),vector:idv(l,j)})))),identity:trainIdentity([0,1,2].flatMap(l=>Array.from({length:8},(_,j)=>({label:String(l),vector:idv(l,j)}))))};
+const tracked=(frames:[number,number]):DetectedFace=>({face:{image:'',vector:[],embedding:idv(0,19)},usable:true,frames});
+test('Video: a student who leaves the view and comes back stays recognised',()=>{const r=recognizeCapture(idModel,[tracked([0,4]),tracked([7,12])]);assert.deepEqual(r.map(x=>x.studentId),['0','0'])});
+test('Video: two people on screen together cannot both be the same student',()=>{const r=recognizeCapture(idModel,[tracked([0,6]),tracked([5,12])]);assert.ok(r.every(x=>!x.studentId))});

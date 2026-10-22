@@ -35,8 +35,19 @@ class PhoneCaptureTests(SimpleTestCase):
             self.assertEqual(self.post(self.path,payload).status_code,200)
         with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[]]):
             self.assertEqual(self.post(self.path,payload).status_code,409)
+    def test_phone_sends_a_full_classroom_of_compact_faces(self):
+        face={'face':{'image':'data:image/jpeg;base64,'+'A'*5000,'vector':[],'embedding':[0.01]*128},'usable':True,'frames':[2,9]}
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[self.session]]) as db:
+            r=self.post(self.path,{'faces':[face]*90})
+        self.assertEqual(r.status_code,200);self.assertEqual(r.json()['faces'],90)
+        stored=db.call_args.args[2]['payload']['faces'][0]
+        self.assertEqual(stored['frames'],[2,9]);self.assertEqual(stored['face']['vector'],[])
+    def test_phone_rejects_malformed_frame_ranges(self):
+        face={'face':{'image':'data:image/jpeg;base64,eA==','vector':[]},'usable':True,'frames':['a',1]}
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',return_value=[self.session]):
+            self.assertEqual(self.post(self.path,{'faces':[face]}).status_code,400)
     def test_phone_rejects_invalid_vectors_and_excess_faces(self):
-        for faces in ([],[{}]*41,[{'face':{'image':'data:image/jpeg;base64,eA==','vector':[0.0]*575},'usable':True}],[{'face':[],'usable':True}]):
+        for faces in ([],[{}]*151,[{'face':{'image':'data:image/jpeg;base64,eA==','vector':[0.0]*575},'usable':True}],[{'face':[],'usable':True}]):
             with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',return_value=[self.session]):
                 self.assertEqual(self.post(self.path,{'faces':faces}).status_code,400)
     def test_acknowledgement_is_scoped_to_the_frame_and_session(self):
