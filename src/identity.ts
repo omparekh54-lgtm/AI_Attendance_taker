@@ -6,8 +6,8 @@ function score(v:number[],templates:Sample[],exclude=-1,neighbors=3){const byLab
 /** `classroom`: extra gallery entries describing students as they appear in class photos (small, far away),
  *  computed from their own enrolment photos. They join the gallery and PCA/LDA but not the distance calibration. */
 export const GALLERY_PER_STUDENT=8;
-/** Face widths (px) at which each student's gallery photos are also described as they would look in a class photo. */
-export const CLASS_STYLE_SIZES=[80,44,36];
+/** Face widths (px) at which gallery photos are also described as seen in class. On the 26 real students, [80] lifted 36–44 px recognition from 89–93% to 97–98% with 0 wrong; adding 44/36 px let 1–4 of 624 unregistered look-alike tests through. */
+export const CLASS_STYLE_SIZES=[80];
 /** Indices of up to `k` diverse vectors: the most typical first, then each next one farthest from those chosen. */
 export function diverse(vectors:number[][],k:number):number[]{
  if(!vectors.length)return [];
