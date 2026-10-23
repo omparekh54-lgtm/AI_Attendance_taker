@@ -39,4 +39,4 @@ X_FRAME_OPTIONS = 'DENY'
 USE_TZ = True
 TIME_ZONE = 'Asia/Kolkata'
 
-DATA_UPLOAD_MAX_MEMORY_SIZE = 1000000
+DATA_UPLOAD_MAX_MEMORY_SIZE = 3_200_000  # recognition model saves; each endpoint applies its own smaller limit

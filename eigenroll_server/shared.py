@@ -90,7 +90,8 @@ def workspace(request):
         if kind not in ('classes','students','sessions','models'): raise ValueError()
         offset=max(0,int(request.GET.get('offset',0)))
         return JsonResponse({'rows':db(query('eigenroll_entities',kind='eq.'+kind,select='id,payload,revision',order='id',limit=5,offset=offset))})
-    d=data(request); ident=str(d['id']);kind=d['kind']
+    # Teacher saves include the recognition model (about 1.7 MB for a class of 26 with the class-style gallery).
+    d=data(request,3_000_000,'This record is too large to save. Contact the developer.'); ident=str(d['id']);kind=d['kind']
     if kind not in ('classes','students','sessions','models') or len(ident)>200: raise ValueError()
     if request.method=='DELETE':
         rows=db(query('eigenroll_entities',id='eq.'+ident,revision='eq.'+str(int(d['revision']))),'DELETE',prefer='return=representation')

@@ -59,3 +59,23 @@ export async function describeClassroomFace(source:HTMLCanvasElement){
  queue=work.catch(()=>{});return work;
 }
 export async function describeFaceDataUrl(url:string){const image=new Image();image.src=url;await image.decode();return describeFace(image)}
+
+/** Describe an enrolment photo as it would look in a class photo with a face `facePx` wide:
+ *  shrink the 96 px crop to that size, then upscale it the way a classroom scan does. */
+export async function describeAsSeenInClass(url: string, facePx: number) {
+  const image = new Image();
+  image.src = url;
+  await image.decode();
+  const side = Math.max(8, Math.round(96 * facePx / 80));
+  const small = document.createElement('canvas');
+  small.width = small.height = side;
+  const sx = small.getContext('2d')!;
+  sx.imageSmoothingQuality = 'high';
+  sx.drawImage(image, 0, 0, side, side);
+  const up = document.createElement('canvas');
+  up.width = up.height = 96;
+  const ux = up.getContext('2d')!;
+  ux.imageSmoothingQuality = 'high';
+  ux.drawImage(small, 0, 0, 96, 96);
+  return describeClassroomFace(up);
+}

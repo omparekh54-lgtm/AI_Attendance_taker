@@ -51,8 +51,32 @@ export async function findFaces(frame: HTMLCanvasElement, options: {group?: bool
     }
   }
   // Classroom photos: the selfie-range BlazeFace model above cannot see small, distant faces.
-  if (options.group) detections.push(...await groupDetections(frame, options.onProgress, options.progressShare ?? 0.7));
+  // Dark classrooms: look for faces in a brightened copy; identity features still come from the original photo.
+  if (options.group) detections.push(...await groupDetections(brightened(frame), options.onProgress, options.progressShare ?? 0.7));
   return dedupeBoxes(detections.map(d => ({...d, score: d.categories[0]?.score ?? 0, box: d.boundingBox})));
+}
+
+/** A brightened copy of a dark photo (mean brightness below 100 of 255), otherwise the photo itself. */
+export function brightened(frame: HTMLCanvasElement) {
+  const probe = document.createElement('canvas');
+  probe.width = probe.height = 64;
+  const px = probe.getContext('2d', {willReadFrequently: true})!;
+  px.drawImage(frame, 0, 0, 64, 64);
+  const d = px.getImageData(0, 0, 64, 64).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+  const mean = sum / (64 * 64);
+  if (mean >= 100) return frame;
+  const gamma = Math.log(125 / 255) / Math.log(Math.max(mean, 8) / 255);
+  const lut = new Uint8ClampedArray(256).map((_, v) => 255 * (v / 255) ** gamma);
+  const out = document.createElement('canvas');
+  out.width = frame.width; out.height = frame.height;
+  const ox = out.getContext('2d', {willReadFrequently: true})!;
+  ox.drawImage(frame, 0, 0);
+  const img = ox.getImageData(0, 0, out.width, out.height);
+  for (let i = 0; i < img.data.length; i += 4) { img.data[i] = lut[img.data[i]]; img.data[i + 1] = lut[img.data[i + 1]]; img.data[i + 2] = lut[img.data[i + 2]]; }
+  ox.putImageData(img, 0, 0);
+  return out;
 }
 
 async function groupDetections(frame: HTMLCanvasElement, onProgress: ScanProgress | undefined, share: number): Promise<Detection[]> {

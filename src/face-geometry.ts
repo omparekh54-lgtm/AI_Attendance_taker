@@ -12,7 +12,8 @@ export function tileGrid(w:number,h:number,size:number){
 /** Tile sizes so a back-row face is still large enough for the detector's 512 px input. */
 export function groupTileSizes(w:number,h:number){
  const sizes:number[]=[],short=Math.min(w,h);
- for(const size of [Math.round(short/1.5),Math.round(short/2.5)])if(size>=480&&!sizes.includes(size))sizes.push(size);
+ // A third, finer scale for phone photos (12 MP+), so 35–45 px back-row faces are big enough for the detector.
+ for(const size of [Math.round(short/1.5),Math.round(short/2.5),...(short>=2400?[Math.round(short/4)]:[])])if(size>=480&&!sizes.includes(size))sizes.push(size);
  return sizes;
 }
 

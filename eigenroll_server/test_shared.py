@@ -35,6 +35,13 @@ class SharedSecurityTests(SimpleTestCase):
         self.login()
         with patch('django.core.signing.time.time',side_effect=lambda:__import__('time').time_ns()/1e9+9*3600):
             self.assertFalse(self.client.get('/api/auth').json()['teacher'])
+    def test_teacher_can_save_a_large_recognition_model_but_not_unbounded(self):
+        self.login()
+        model={'id':'models:classroom','kind':'models','payload':{'blob':'x'*1_800_000}}
+        with patch('eigenroll_server.shared.db',return_value=[{'revision':1}]):
+            self.assertEqual(self.post('/api/workspace',model).status_code,200)
+        model['payload']['blob']='x'*3_100_000
+        self.assertEqual(self.post('/api/workspace',model).status_code,413)
     def test_tampered_teacher_cookie_is_rejected(self):
         self.client.cookies['eigenroll_teacher']='forged'
         self.assertEqual(self.client.get('/api/workspace').status_code,401)

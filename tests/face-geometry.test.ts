@@ -16,3 +16,4 @@ import {dedupeBoxes} from '../src/face-geometry';
 const bx=(x:number,y:number,s:number,score:number)=>({score,box:{originX:x,originY:y,width:s,height:s}});
 test('Duplicate and nested boxes on one face collapse to the best one',()=>{const r=dedupeBoxes([bx(100,100,50,.7),bx(110,108,40,.9),bx(95,90,70,.6)]);assert.equal(r.length,1);assert.equal(r[0].score,.9)});
 test('Neighbouring faces that only touch are both kept',()=>{const r=dedupeBoxes([bx(100,100,50,.9),bx(140,100,50,.8),bx(300,100,40,.7)]);assert.equal(r.length,3)});
+test('12 MP phone photos get a third, finer scan for back rows',()=>{assert.deepEqual(groupTileSizes(4032,3024),[2016,1210,756]);assert.deepEqual(groupTileSizes(1920,1080),[720])});

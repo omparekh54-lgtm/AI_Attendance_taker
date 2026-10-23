@@ -1,5 +1,5 @@
-import {IDENTITY_EXTRACTOR} from './identity';
-import {describeFaceDataUrl} from './embeddings';
+import {IDENTITY_EXTRACTOR, diverse, GALLERY_PER_STUDENT, CLASS_STYLE_SIZES} from './identity';
+import {describeFaceDataUrl, describeAsSeenInClass} from './embeddings';
 import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, LogOut, RefreshCw, RotateCcw, ScanFace, Settings, Smartphone, Users} from 'lucide-react';
@@ -10,6 +10,7 @@ import {load, loadAttendance, save, initial, csv, download, type State, type Stu
 import {recognizeCapture, rosterSignature, type DetectedFace, type Observation} from './attendance';
 import {loadSavedAttendance, saveAttendance, clearSavedAttendance, type SavedAttendance} from './saved-attendance';
 import type {Model} from './model';
+import type {Sample} from './model';
 import './style.css';
 import './board.css';
 
@@ -23,16 +24,12 @@ const readState = () => (management ? load() : loadAttendance());
 const BATCH_ID = 'classroom', BATCH_NAME = 'BTI DS 2022 - 28';
 const validSapId = (roll: string) => /^\d{11}$/.test(roll);
 
-function trainModel(students: Student[]): Promise<Model> {
+function trainModel(students: Student[], classroom: Sample[] = []): Promise<Model> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./train.worker.ts', import.meta.url), {type: 'module'});
-    worker.onmessage = e => {
-      worker.terminate();
-      if (e.data.error) reject(Error(e.data.error));
-      else resolve({...e.data.model, rosterSignature: rosterSignature(students)});
-    };
+    worker.onmessage = e => { worker.terminate(); if (e.data.error) reject(Error(e.data.error)); else resolve(e.data.model); };
     worker.onerror = e => { worker.terminate(); reject(Error(e.message)); };
-    worker.postMessage(students.flatMap(s => s.faces.map(f => ({label: s.id, vector: f.vector}))));
+    worker.postMessage({students: students.map(s => ({id: s.id, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
   });
 }
 
@@ -111,7 +108,17 @@ function App() {
         setBusy(`Preparing face features ${++prepared} / ${total}`);
         f.embedding = await describeFaceDataUrl(f.image);
       }
-      const trained = await trainModel(enriched);
+      // Class-style gallery: each student's gallery photos as they look small and far away in a class photo.
+      const classroom: Sample[] = [];
+      if (enriched.every(s => s.faces.every(f => f.image))) {
+        const jobs = enriched.flatMap(s => diverse(s.faces.map(f => f.embedding!), GALLERY_PER_STUDENT).flatMap(i => CLASS_STYLE_SIZES.map(px => ({id: s.id, image: s.faces[i].image, px}))));
+        let done = 0;
+        for (const job of jobs) {
+          setBusy(`Preparing classroom recognition ${++done} / ${jobs.length}`);
+          try { classroom.push({label: job.id, vector: await describeAsSeenInClass(job.image, job.px)}); } catch { /* unusable enrolment photo */ }
+        }
+      }
+      const trained = await trainModel(enriched, classroom);
       const updated = new Map(enriched.map(s => [s.id, s]));
       await commit({...state, students: state.students.map(s => updated.get(s.id) ?? s), models: {...state.models, [BATCH_ID]: trained}});
       setNotice('Recognition is ready. Open the camera to begin.');
