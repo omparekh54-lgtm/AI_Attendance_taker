@@ -22,6 +22,18 @@ Classroom photos use a group face detector (SSD MobileNet v1 from the pinned fac
 
 After a capture, the board shows **X of N present** and **Y absent** against the registered batch, with a progress bar while the photo is scanned.
 
+### Tested on the registered students
+
+Measured on the 26 registered students using 472 of their enrolment photos that the model never trained on, placed in 60-person class photos (6 rows, faces 110 px at the front down to 32 px at the back, with 34 strangers):
+
+| Class photo | Marked automatically | One-tap confirmations | Missed | Wrong student / stranger marked |
+|---|---|---|---|---|
+| Clear, all 26 present | 20 | 6 | 0 | 0 / 0 |
+| Dark and slightly soft, 20 present | 13 | 5 | 2 | 0 / 0 |
+| 35% of faces blurred, 23 present | 17 | 3 | 3 | 0 / 0 |
+
+Before these changes the same photos gave 18/26, 11/20 and 15/23. What changed: a finer scan for 12 MP+ photos, face detection on a brightened copy of dark photos, a class-style gallery entry for each gallery photo (built when the teacher presses **Rebuild recognition**), and recognising faces down to 22 px. Faces smaller than 32 px are only ever suggested, never marked automatically, because 1 of 416 unregistered look-alike tests at that size matched someone. These photos are composed from enrolment selfies, so real classrooms (angles, people blocking each other) can do worse; strangers were occasionally offered as one-tap suggestions (1–3 per photo), so check the face before tapping **Yes**.
+
 ### Big classes, several photos and video
 
 A class photo can hold 60+ people; only registered students can be named, and everyone else is left alone.
