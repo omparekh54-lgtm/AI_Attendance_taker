@@ -17,9 +17,11 @@ export function groupTileSizes(w:number,h:number){
  return sizes;
 }
 
-/** Smallest face (px) the classroom scan tries to recognise. On labelled group photos shrunk to 36 px faces,
- *  recognition matched 45 px faces with no wrong students; at 28 px detection and identity both broke down. */
-export const MIN_RECOGNISABLE_FACE_PX = 32;
+/** Face-box sizes (px, as drawn by the detector) for classroom scans. Measured on the 26 real students' unseen photos:
+ *  recognition stays 89–97% down to ~22 px boxes with no wrong students, but 1 of 416 unregistered look-alike tests
+ *  below 32 px was matched to someone. So small faces are recognised but only ever suggested for the teacher to confirm. */
+export const MIN_RECOGNISABLE_FACE_PX = 22;
+export const AUTO_MARK_MIN_FACE_PX = 32;
 type Box = {originX: number; originY: number; width: number; height: number};
 /** Keep one box per face: drop a lower-scoring box that mostly overlaps a kept one or has its centre inside it. */
 export function dedupeBoxes<T extends {score: number; box: Box}>(items: T[]): T[] {

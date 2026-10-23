@@ -15,3 +15,6 @@ const idModel={...train([0,1,2].flatMap(l=>Array.from({length:8},(_,j)=>({label:
 const tracked=(frames:[number,number]):DetectedFace=>({face:{image:'',vector:[],embedding:idv(0,19)},usable:true,frames});
 test('Video: a student who leaves the view and comes back stays recognised',()=>{const r=recognizeCapture(idModel,[tracked([0,4]),tracked([7,12])]);assert.deepEqual(r.map(x=>x.studentId),['0','0'])});
 test('Video: two people on screen together cannot both be the same student',()=>{const r=recognizeCapture(idModel,[tracked([0,6]),tracked([5,12])]);assert.ok(r.every(x=>!x.studentId))});
+test('A small back-row face is only suggested, never marked automatically',()=>{const small:DetectedFace={face:{image:'',vector:[],embedding:idv(1,19)},usable:true,box:{x:.5,y:.1,w:26/4000,h:28/3000},sourceWidth:4000,sourceHeight:3000};
+ const big:DetectedFace={...small,box:{x:.2,y:.6,w:90/4000,h:95/3000},face:{image:'',vector:[],embedding:idv(2,19)}};
+ const [s,b]=recognizeCapture(idModel,[small,big]);assert.equal(s.studentId,undefined);assert.equal(s.suggestion,'1');assert.equal(b.studentId,'2')});
