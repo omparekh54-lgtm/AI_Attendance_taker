@@ -128,7 +128,9 @@ function App() {
   const attempted = useRef('');
   useEffect(() => {
     const signature = rosterSignature(students);
-    if (!loaded || students.length < 2 || validModel || attempted.current === signature) return;
+    // On the teacher page, also fill in class-photo features for students registered before they existed.
+    const missingClassFeatures = management && students.some(s => !s.classroom?.length && s.faces.every(f => f.image));
+    if (!loaded || students.length < 2 || (validModel && !missingClassFeatures) || attempted.current === signature) return;
     attempted.current = signature;
     void train();
   }, [loaded, students, validModel]);

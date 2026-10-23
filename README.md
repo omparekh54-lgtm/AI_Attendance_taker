@@ -14,7 +14,7 @@ Bookmark https://ai-attendance-taker.vercel.app/ on the smartboard. Select **Ope
 
 The active class ID is `classroom`, displayed as **BTI DS 2022 - 28**. Submitted IDs are preserved; non-11-digit identifiers are flagged under **Manage batch** for correction. New registrations require approval. A missing or stale recognition model is trained in a Web Worker. Rebuild recognition after changing face samples.
 
-The root URL opens the attendance board. It asks for the teacher access key once per device ("Keep this device signed in for 30 days" is on by default for the smartboard), because the board loads student names, SAP IDs and face templates; `/api/attendance` returns 401 without a teacher session. Batch management is at `?page=manage`. Open `?page=register` to enroll. Existing `?invite=...` registration links continue working. Only registered students can be recognized. Students not found in any capture are listed as absent; check the faces under review before finalising.
+The home page offers **Take attendance** (`?page=attendance`) and **Student registration** (`?page=register`); neither asks for a key. Registration saves the student straight into the roster and computes their class-photo features on their own device, and the board rebuilds its recognition model from the roster each time it opens (about a second), so a new student is recognised from the next capture. The board receives names, SAP IDs and face features but never enrolment photos. The teacher page (`?page=manage`, not linked from the home page) still asks for the key; opening it once fills in class-photo features for students registered before they existed.
 
 ## Recognition and limitations
 
