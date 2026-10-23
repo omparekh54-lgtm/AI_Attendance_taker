@@ -1,9 +1,10 @@
-import {IDENTITY_EXTRACTOR, diverse, GALLERY_PER_STUDENT, CLASS_STYLE_SIZES} from './identity';
-import {describeFaceDataUrl, describeAsSeenInClass} from './embeddings';
+import {IDENTITY_EXTRACTOR} from './identity';
+import {describeFaceDataUrl} from './embeddings';
+import {classroomFeatures} from './classroom-features';
 import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, LogOut, RefreshCw, RotateCcw, ScanFace, Settings, Smartphone, Users} from 'lucide-react';
-import {TeacherGate, signOut} from './signin';
+import {Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, RefreshCw, RotateCcw, ScanFace, Smartphone, Users} from 'lucide-react';
+import {Home} from './home';
 import {CameraCapture} from './camera';
 import {config} from './config';
 import {load, loadAttendance, save, initial, csv, download, type State, type Student} from './store';
@@ -29,7 +30,7 @@ function trainModel(students: Student[], classroom: Sample[] = []): Promise<Mode
     const worker = new Worker(new URL('./train.worker.ts', import.meta.url), {type: 'module'});
     worker.onmessage = e => { worker.terminate(); if (e.data.error) reject(Error(e.data.error)); else resolve(e.data.model); };
     worker.onerror = e => { worker.terminate(); reject(Error(e.message)); };
-    worker.postMessage({students: students.map(s => ({id: s.id, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
+    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
   });
 }
 
@@ -96,32 +97,31 @@ function App() {
     setPhone(false);
     await task('Refreshing class', async () => { setState(await readState()); });
   }
+  /** Board: builds recognition from the current roster in about a second, so new registrations count at once.
+   *  Teacher page: also fills in any missing class-photo features from the enrolment photos and saves them. */
   async function train() {
-    await task('Preparing recognition for your batch', async () => {
+    await task(management ? 'Preparing recognition for your batch' : 'Getting recognition ready', async () => {
       if (students.some(s => s.faces.length < 5)) throw Error('Every registered student needs at least 5 face samples.');
-      const enriched = structuredClone(students);
-      let prepared = 0;
-      const total = enriched.reduce((n, s) => n + s.faces.length, 0);
-      for (const s of enriched) for (const f of s.faces) {
-        if (f.embedding) continue;
-        if (!f.image) throw Error('Recognition needs rebuilding from Manage batch. Existing attendance results are unchanged.');
-        setBusy(`Preparing face features ${++prepared} / ${total}`);
-        f.embedding = await describeFaceDataUrl(f.image);
-      }
-      // Class-style gallery: each student's gallery photos as they look small and far away in a class photo.
-      const classroom: Sample[] = [];
-      if (enriched.every(s => s.faces.every(f => f.image))) {
-        const jobs = enriched.flatMap(s => diverse(s.faces.map(f => f.embedding!), GALLERY_PER_STUDENT).flatMap(i => CLASS_STYLE_SIZES.map(px => ({id: s.id, image: s.faces[i].image, px}))));
+      const roster = structuredClone(students);
+      if (management) {
+        let prepared = 0;
+        const total = roster.reduce((n, s) => n + s.faces.filter(f => !f.embedding).length, 0);
+        for (const s of roster) for (const f of s.faces) {
+          if (f.embedding || !f.image) continue;
+          setBusy(`Preparing face features ${++prepared} / ${total}`);
+          f.embedding = await describeFaceDataUrl(f.image);
+        }
+        const needClass = roster.filter(s => !s.classroom?.length && s.faces.every(f => f.image && f.embedding));
         let done = 0;
-        for (const job of jobs) {
-          setBusy(`Preparing classroom recognition ${++done} / ${jobs.length}`);
-          try { classroom.push({label: job.id, vector: await describeAsSeenInClass(job.image, job.px)}); } catch { /* unusable enrolment photo */ }
+        for (const s of needClass) {
+          setBusy(`Preparing classroom recognition ${++done} / ${needClass.length}`);
+          s.classroom = await classroomFeatures(s.faces.map(f => ({image: f.image, embedding: f.embedding!})));
         }
       }
-      const trained = await trainModel(enriched, classroom);
-      const updated = new Map(enriched.map(s => [s.id, s]));
+      const trained = await trainModel(roster);
+      const updated = new Map(roster.map(s => [s.id, s]));
       await commit({...state, students: state.students.map(s => updated.get(s.id) ?? s), models: {...state.models, [BATCH_ID]: trained}});
-      setNotice('Recognition is ready. Open the camera to begin.');
+      if (management) setNotice('Recognition is up to date.');
     });
   }
   // Prepare once for an untrained roster; the worker keeps the smartboard responsive.
@@ -196,11 +196,10 @@ function App() {
       <header className="board-header">
         <a className="brand" href="/"><span className="brand-icon"><ScanFace/></span>eigenroll<span className="brand-dot">.</span></a>
         <div className="board-header-actions">
-          <button onClick={() => { location.href = management ? '/' : '/?page=manage'; }} disabled={!!busy}>
-            {management ? <ChevronLeft size={18}/> : <Settings size={18}/>}<span className="label">{management ? 'Take attendance' : 'Manage batch'}</span>
+          <button onClick={() => { location.href = management ? '/?page=attendance' : '/'; }} disabled={!!busy}>
+            <ChevronLeft size={18}/><span className="label">{management ? 'Take attendance' : 'Home'}</span>
           </button>
           <button onClick={refresh} disabled={!!busy} aria-label="Refresh batch" title="Reload students"><RefreshCw size={18}/></button>
-          {config.sharedStorage && !management && <button onClick={signOut} aria-label="Sign out" title="Sign out of this device"><LogOut size={18}/></button>}
         </div>
       </header>
       <main className="board-main">
@@ -375,9 +374,11 @@ function StudentRow({student, detail, action, onClick}: {student: Student; detai
 
 const params = new URLSearchParams(location.search);
 const phoneToken = params.get('phone');
-const registration = params.has('invite') || ['manage', 'register'].includes(params.get('page') ?? '');
+const page = params.get('page') ?? '';
+// Home → two choices. Attendance and registration need no key; the hidden admin page (?page=manage) keeps one.
+const registration = params.has('invite') || ['manage', 'register'].includes(page);
 createRoot(document.getElementById('root')!).render(
   <Suspense fallback={<div className="loading">Opening EigenRoll…</div>}>
-    {phoneToken ? <PhoneCapture token={phoneToken}/> : registration ? <Entry><App/></Entry> : <TeacherGate><App/></TeacherGate>}
+    {phoneToken ? <PhoneCapture token={phoneToken}/> : registration ? <Entry><App/></Entry> : page === 'attendance' ? <App/> : <Home/>}
   </Suspense>,
 );

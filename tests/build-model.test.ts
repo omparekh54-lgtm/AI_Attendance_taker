@@ -8,3 +8,6 @@ test('Rebuilding recognition produces a model the board accepts',()=>{const m=bu
 test('Class-style gallery entries are kept for enrolled students only',()=>{const m=buildModel(students,'x',[{label:'s0',vector:emb(0,99)},{label:'ghost',vector:emb(5,1)}]);
  assert.equal(m.identity!.templates.filter(t=>t.label==='s0').length,9);assert.ok(!m.identity!.templates.some(t=>t.label==='ghost'))});
 test('Missing face features are reported instead of building a broken model',()=>{const broken=[{...students[0],faces:[{image:'',vector:pix(0,1)}]},students[1]];assert.throws(()=>buildModel(broken as any,'x'),/missing/)});
+test('The board builds recognition from features alone, including class-photo features, with no photos',()=>{
+ const roster=[0,1,2].map(l=>({id:'s'+l,classroom:[emb(l,77)],faces:Array.from({length:10},(_,j)=>({image:'',vector:[] as number[],embedding:emb(l,j)}))}));
+ const m=buildModel(roster,rosterSignature(roster));assert.equal(m.identity!.templates.filter(t=>t.label==='s2').length,9);assert.equal(m.version,'identity-only');assert.equal(predictIdentity(m.identity!,emb(2,40)).label,'s2')});

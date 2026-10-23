@@ -20,12 +20,6 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertTrue(response.cookies['eigenroll_teacher']['httponly'])
         self.assertEqual(response.cookies['eigenroll_teacher']['samesite'],'Strict')
         self.assertTrue(self.client.get('/api/auth').json()['teacher'])
-    def test_roster_and_face_templates_are_teacher_only(self):
-        with patch('eigenroll_server.shared.db',return_value=[]) as db:
-            for kind in ['snapshot','students','models']:
-                response=self.client.get('/api/attendance?kind='+kind)
-                self.assertEqual(response.status_code,401)
-        db.assert_not_called()
     def test_remembered_smartboard_stays_signed_in_and_session_expires(self):
         with patch('eigenroll_server.shared.db',return_value=True):
             response=self.post('/api/auth',{'password':'teacher-test-key','remember':True})
@@ -61,22 +55,52 @@ class SharedSecurityTests(SimpleTestCase):
         with patch('eigenroll_server.shared.db',side_effect=gateway):
             self.assertEqual(self.post(path,{'name':'Student','roll':'1','faces':[]}).status_code,400)
             self.assertEqual(self.post(path,{'name':'Student','roll':'1','faces':[],'consent':True}).status_code,400)
-    def test_valid_submission_is_pending_and_duplicate_is_rejected(self):
-        token=signing.dumps({'classId':'classroom'},salt='enrollment')
-        payload={'name':'Student','roll':'1','consent':True,'faces':[{'image':'data:image/jpeg;base64,eA==','vector':[0.0]*576} for _ in range(20)]}
+    def face(self,embedding=True):
+        return {'image':'data:image/jpeg;base64,eA==','vector':[0.0]*576,**({'embedding':[0.01]*128} if embedding else {})}
+    def test_registration_joins_the_roster_immediately_and_duplicates_are_rejected(self):
+        token=signing.dumps({'classId':'classroom'},salt='enrollment');written=[]
+        payload={'name':' Asha Rao ','roll':'70382200099','consent':True,'faces':[self.face() for _ in range(20)],'classroom':[[0.02]*128]*8}
         def gateway(path,method='GET',body=None,*args):
             if path.startswith('rpc/'):return True
             if 'eq.classes' in path:return [{'payload':{'name':'Our classroom'}}]
-            if 'eq.students' in path:return []
-            if method=='POST':return None
+            if method=='POST':written.append((path,body));return None
             return []
         with patch('eigenroll_server.shared.db',side_effect=gateway):
-            self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,201)
+            r=self.post('/api/enroll?invite='+token,payload)
+        self.assertEqual(r.status_code,201);self.assertIn('registered',r.json()['message'])
+        path,body=written[0];self.assertEqual(path,'eigenroll_entities');self.assertEqual(body['kind'],'students')
+        self.assertEqual(body['payload']['name'],'Asha Rao');self.assertEqual(body['payload']['classId'],'classroom');self.assertEqual(len(body['payload']['classroom']),8)
+        self.assertEqual(body['id'],'students:'+body['payload']['id'])
         def duplicate(path,method='GET',body=None,*args):
-            if method=='POST' and path=='eigenroll_enrollments':raise GatewayError('Duplicate registration.',409)
+            if 'eq.students' in path:return [{'payload':{'roll':'70382200099'}}]
             return gateway(path,method,body,*args)
         with patch('eigenroll_server.shared.db',side_effect=duplicate):
             self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,409)
+    def test_registration_needs_face_features_and_valid_classroom_features(self):
+        token=signing.dumps({'classId':'classroom'},salt='enrollment')
+        def gateway(path,*args):return True if path.startswith('rpc/') else ([] if 'eq.students' in path else [{'payload':{'name':'Our classroom'}}])
+        base={'name':'Student','roll':'1','consent':True}
+        with patch('eigenroll_server.shared.db',side_effect=gateway):
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face(False) for _ in range(20)]}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[9.0]*128]}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*9}).status_code,400)
+    def test_attendance_board_needs_no_key_and_never_sends_photos(self):
+        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[0.123456789]*128}]*20,'classroom':[[0.2]*128]*8}
+        with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]) as db:
+            r=self.client.get('/api/attendance?kind=snapshot')
+        self.assertEqual(r.status_code,200);self.assertEqual(db.call_count,1);self.assertIn('payload-%3E%3EclassId=eq.classroom',db.call_args.args[0])
+        snap=r.json();s=snap['students'][0]
+        self.assertNotContains(r,'private-photo');self.assertEqual(s['faces'][0]['vector'],[]);self.assertEqual(s['faces'][0]['embedding'][0],0.12346)
+        self.assertEqual(len(s['classroom']),8);self.assertEqual(r['Cache-Control'],'no-store')
+        self.assertEqual(self.client.get('/api/attendance?kind=students').status_code,400)
+        self.assertEqual(self.post('/api/attendance',{}).status_code,405)
+        self.assertEqual(self.post('/api/workspace',{}).status_code,401)
+    def test_attendance_snapshot_pages_without_truncating_the_roster(self):
+        row={'payload':{'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[]}}
+        with patch('eigenroll_server.shared.db',side_effect=[[row]*100,[row]]) as db:
+            response=self.client.get('/api/attendance?kind=snapshot')
+        self.assertEqual(len(response.json()['students']),101)
+        self.assertIn('offset=100',db.call_args.args[0])
     def test_concurrent_teacher_change_returns_conflict(self):
         self.login()
         with patch('eigenroll_server.shared.db',return_value=[]):
@@ -88,53 +112,12 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertEqual(client.post('/api/enroll','{}',content_type='application/json').status_code,403)
 
 
-    def test_direct_attendance_is_read_only_and_omits_enrollment_images(self):
-        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[0.0]*576}]}
-        self.assertEqual(self.client.get('/api/attendance').status_code,401)
-        self.login()
-        with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]):
-            r=self.client.get('/api/attendance');self.assertEqual(r.status_code,200)
-        self.assertEqual(r.json()['rows'][0]['payload']['faces'][0]['image'],'')
-        self.assertEqual(r['Cache-Control'],'no-store')
-        self.assertEqual(self.client.get('/api/attendance?kind=sessions').status_code,400)
-        self.assertEqual(self.post('/api/attendance',{}).status_code,405)
-        self.client.cookies.clear()
-        self.assertEqual(self.post('/api/workspace',{}).status_code,401)
-
     def test_enrollment_rejects_malformed_identity_features(self):
         token=signing.dumps({'classId':'classroom'},salt='enrollment')
         payload={'name':'Student','roll':'1','consent':True,'faces':[{'image':'data:image/jpeg;base64,eA==','vector':[0.0]*576,'embedding':[0.0]*127} for _ in range(20)]}
         def gateway(path,*args):return True if path.startswith('rpc/') else [{'payload':{'name':'Our classroom'}}]
         with patch('eigenroll_server.shared.db',side_effect=gateway):
             self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,400)
-
-    def test_attendance_snapshot_is_compact_current_batch_and_includes_model(self):
-        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[1.0]*128}]*20}
-        model={'rosterSignature':'s:20','identity':{'extractor':'faceapi-1.7.15-landmarks-v1'}}
-        rows=[{'id':'students:s','kind':'students','payload':student},{'id':'models:classroom','kind':'models','payload':model}, {'id':'students:other','kind':'students','payload':{**student,'classId':'other'}}]
-        self.login()
-        with patch('eigenroll_server.shared.db',return_value=rows) as db:
-            response=self.client.get('/api/attendance?kind=snapshot')
-        self.assertEqual(response.status_code,200)
-        self.assertEqual(db.call_count,1)
-        snapshot=response.json()
-        self.assertEqual(snapshot['models']['classroom'],model)
-        self.assertEqual(len(snapshot['students']),1)
-        self.assertEqual(len(snapshot['students'][0]['faces']),20)
-        self.assertEqual(snapshot['students'][0]['faces'][0],{'image':'','vector':[]})
-        self.assertNotContains(response,'private-photo')
-        self.assertEqual(snapshot['sessions'],[])
-        self.assertEqual(response['Cache-Control'],'no-store')
-        self.assertLess(len(response.content),2000)
-
-    def test_attendance_snapshot_pages_without_truncating_the_roster(self):
-        student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[]}
-        row={'id':'students:s','kind':'students','payload':student}
-        self.login()
-        with patch('eigenroll_server.shared.db',side_effect=[[row]*100,[row]]) as db:
-            response=self.client.get('/api/attendance?kind=snapshot')
-        self.assertEqual(len(response.json()['students']),101)
-        self.assertIn('offset=100',db.call_args.args[0])
 
     def test_database_gateway_accepts_compressed_responses(self):
         import gzip

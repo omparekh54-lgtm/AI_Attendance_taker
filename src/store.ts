@@ -1,6 +1,7 @@
-import {rosterSignature} from './attendance';import {IDENTITY_EXTRACTOR} from './identity';import {api} from './api';import {config} from './config';
+import {api} from './api';import {config} from './config';
 import type {Model} from './model';
-export type Face={image:string;vector:number[];embedding?:number[]};export type Student={id:string;name:string;roll:string;classId:string;faces:Face[]};export type Classroom={id:string;name:string};export type Attendance={studentId:string;name:string;roll:string;status:'present'|'absent';method:'recognition'|'manual';};export type Session={id:string;classId:string;className:string;subject:string;date:string;records:Attendance[];modelVersion?:string;corrections?:{studentId:string;previous:string;next:string;at:string}[]};export type State={classes:Classroom[];students:Student[];sessions:Session[];models:Record<string,Model>};
+export type Face={image:string;vector:number[];embedding?:number[]};/** classroom: face features of the student as seen small and far away in a class photo (computed at registration). */
+export type Student={id:string;name:string;roll:string;classId:string;faces:Face[];classroom?:number[][]};export type Classroom={id:string;name:string};export type Attendance={studentId:string;name:string;roll:string;status:'present'|'absent';method:'recognition'|'manual';};export type Session={id:string;classId:string;className:string;subject:string;date:string;records:Attendance[];modelVersion?:string;corrections?:{studentId:string;previous:string;next:string;at:string}[]};export type State={classes:Classroom[];students:Student[];sessions:Session[];models:Record<string,Model>};
 export const initial:State={classes:[],students:[],sessions:[],models:{}};
 function open(){return new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('eigenroll',1);r.onupgradeneeded=()=>r.result.createObjectStore('state');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
 async function localLoad(){const db=await open();return new Promise<State>((resolve,reject)=>{const tx=db.transaction('state','readonly'),r=tx.objectStore('state').get('workspace');r.onsuccess=()=>resolve(r.result??structuredClone(initial));r.onerror=()=>reject(r.error);tx.oncomplete=()=>db.close();});}
@@ -17,4 +18,7 @@ export async function save(state:State){if(!config.sharedStorage)return localSav
 export const loadPreviousBrowserWorkspace=localLoad;
 
 
-export async function loadAttendance():Promise<State>{if(!config.sharedStorage)return localLoad();const snapshot=await api<State>('attendance?kind=snapshot');const model=snapshot.models.classroom;if(model?.identity?.extractor===IDENTITY_EXTRACTOR&&model.rosterSignature===rosterSignature(snapshot.students))return snapshot;const state=structuredClone(initial);for(let offset=0;;offset+=5){const r=await api<{rows:{payload:Student}[]}>('attendance?kind=students&offset='+offset);state.students.push(...r.rows.map(row=>row.payload));if(r.rows.length<5)break;}const r=await api<{rows:{payload:Model}[]}>('attendance?kind=models');if(r.rows[0])state.models.classroom=r.rows[0].payload;state.classes=[{id:'classroom',name:'BTI DS 2022 - 28'}];return state;}
+export async function loadAttendance():Promise<State>{
+ if(!config.sharedStorage)return localLoad();
+ return api<State>('attendance?kind=snapshot');
+}

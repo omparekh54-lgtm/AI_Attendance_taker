@@ -32,6 +32,8 @@ def db(path, method='GET', body=None, prefer=None):
     except (URLError,TimeoutError) as e: raise GatewayError('Shared storage is temporarily unavailable. Please retry.') from e
 
 def query(table,**params): return table+'?'+urlencode(params)
+def valid_features(v): return isinstance(v,list) and len(v)==128 and all(type(x) in (float,int) and math.isfinite(x) and abs(x)<=5 for x in v)
+r5=lambda v:[round(x,5) for x in v]
 SESSION_SECONDS=8*3600
 REMEMBER_SECONDS=30*24*3600
 def teacher(request):
@@ -128,7 +130,8 @@ def enrollment(request):
     classes=db(query('eigenroll_entities',id='eq.classes:'+invite['classId'],kind='eq.classes',select='payload'))
     if not classes: raise GatewayError('This class is no longer accepting registrations.',404)
     if request.method=='GET': return JsonResponse({'classId':invite['classId'],'className':classes[0]['payload']['name']})
-    limit(request,'enrollment',30);d=data(request)
+    # A whole class may register from one college Wi-Fi address.
+    limit(request,'enrollment',150);d=data(request)
     if d.get('consent') is not True:raise GatewayError('Please confirm your permission to register your face samples.',400)
     name=d.get('name','');roll=d.get('roll','');faces=d.get('faces')
     if not isinstance(name,str) or not isinstance(roll,str) or not 1<=len(name.strip())<=100 or not 1<=len(roll.strip())<=40:raise GatewayError('Enter a full name and SAP ID.',400)
@@ -138,43 +141,35 @@ def enrollment(request):
         v=f.get('vector')
         if not isinstance(v,list) or len(v)!=576 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>25 for x in v):raise GatewayError('Invalid face sample.',400)
         embedding=f.get('embedding')
-        if embedding is not None and (not isinstance(embedding,list) or len(embedding)!=128 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>5 for x in embedding)):raise GatewayError('Invalid identity features.',400)
+        if not valid_features(embedding):raise GatewayError('Face features are missing. Refresh the page and take the samples again.',400)
+    classroom=d.get('classroom',[])
+    if not isinstance(classroom,list) or len(classroom)>8 or not all(valid_features(v) for v in classroom):raise GatewayError('Invalid classroom features.',400)
     students=db(query('eigenroll_entities',kind='eq.students',select='payload',**{'payload->>classId':'eq.'+invite['classId'],'payload->>roll':'eq.'+roll.strip()}))
-    if students: raise GatewayError('This SAP ID is already enrolled. Contact your teacher for updates.',409)
-    record={'id':str(uuid.uuid4()),'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces}
-    db('eigenroll_enrollments','POST',{'class_id':invite['classId'],'roll':roll.strip(),'payload':record})
-    return JsonResponse({'ok':True,'message':'Submitted for teacher review. You can close this page.'},status=201)
+    if students: raise GatewayError('This SAP ID is already registered. Contact your teacher if your details need to change.',409)
+    ident=str(uuid.uuid4())
+    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,
+            'registeredAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+    # Registered students join the attendance roster immediately; the board builds its model from the roster.
+    db('eigenroll_entities','POST',{'id':'students:'+ident,'kind':'students','payload':record})
+    return JsonResponse({'ok':True,'message':'You are registered. Your attendance can be taken from the next class photo.'},status=201)
 
 
 @ensure_csrf_cookie
 @require_http_methods(['GET'])
 @protected
 def attendance(request):
-    """Read-only current batch for the direct camera workflow. Names, SAP IDs and face templates are teacher-only."""
-    if not teacher(request): raise GatewayError('Teacher sign-in required.',401)
-    kind=request.GET.get('kind','students')
-    if kind=='snapshot':
-        # Fetch current-batch records together. Keep paging for larger rosters;
-        # the browser needs sample counts, not enrollment vectors or photos.
-        students=[];models={};offset=0
-        while True:
-            rows=db(query('eigenroll_entities',select='id,kind,payload',order='id',limit=100,offset=offset,
-                **{'or':'(and(kind.eq.students,payload->>classId.eq.classroom),id.eq.models:classroom)'}))
-            for row in rows:
-                payload=row['payload']
-                if row['kind']=='models' and row['id']=='models:classroom':models['classroom']=payload
-                elif row['kind']=='students' and payload.get('classId')=='classroom':
-                    students.append({k:payload[k] for k in ('id','name','roll','classId')} | {'faces':[{'image':'','vector':[]} for _ in payload.get('faces',[])]})
-            if len(rows)<100:break
-            offset+=100
-        result=JsonResponse({'classes':[{'id':'classroom','name':'BTI DS 2022 - 28'}], 'students':students,'models':models,'sessions':[]},json_dumps_params={'separators':(',',':')})
-        result['Cache-Control']='no-store'
-        return result
-    if kind not in ('students','models'): raise ValueError()
-    params={'kind':'eq.'+kind,'select':'payload','order':'id','limit':5,'offset':max(0,int(request.GET.get('offset',0)))}
-    if kind=='students': params['payload->>classId']='eq.classroom'
-    else: params['id']='eq.models:classroom'
-    rows=db(query('eigenroll_entities',**params))
-    if kind=='students':
-        rows=[{'payload':{k:row['payload'][k] for k in ('id','name','roll','classId')} | {'faces':[{'image':'','vector':face['vector'],**({'embedding':face['embedding']} if face.get('embedding') else {})} for face in row['payload'].get('faces',[])]}} for row in rows]
-    result=JsonResponse({'rows':rows});result['Cache-Control']='no-store';return result
+    """Current roster for the attendance board: names, SAP IDs and face features. Enrolment photos never leave the server."""
+    if request.GET.get('kind','snapshot')!='snapshot': raise ValueError()
+    students=[];offset=0
+    while True:
+        rows=db(query('eigenroll_entities',select='payload',order='id',limit=100,offset=offset,kind='eq.students',**{'payload->>classId':'eq.classroom'}))
+        for row in rows:
+            p=row['payload']
+            students.append({k:p[k] for k in ('id','name','roll','classId')}|{
+                'faces':[{'image':'','vector':[],**({'embedding':r5(f['embedding'])} if f.get('embedding') else {})} for f in p.get('faces',[])],
+                'classroom':[r5(v) for v in p.get('classroom',[])]})
+        if len(rows)<100:break
+        offset+=100
+    result=JsonResponse({'classes':[{'id':'classroom','name':'BTI DS 2022 - 28'}],'students':students,'models':{},'sessions':[]},json_dumps_params={'separators':(',',':')})
+    result['Cache-Control']='no-store'
+    return result
