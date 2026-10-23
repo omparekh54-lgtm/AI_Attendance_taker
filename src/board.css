@@ -87,3 +87,51 @@ body{background:#f5f7f3}.board-app{min-height:100vh}.board-header{height:auto;mi
 .primary-choice strong,.primary-choice>span:last-child{color:#fff}
 .primary-choice .home-icon{background:#c8e1bb;color:#1c4537}
 .home footer{text-align:center;color:#7a8676;font-size:13px;padding:20px}
+
+/* ---- Phones ---- */
+@media (max-width:700px){
+ /* Registration: the form first, a compact step indicator, readable text */
+ .entry>header{padding:14px 16px}
+ .entry-layout{margin-top:6px;gap:14px}
+ .entry-intro h1{font-size:30px;letter-spacing:-1px;margin:4px 0 6px}
+ .entry-intro>p,.entry-intro>.eyebrow{display:none}
+ .entry-steps{margin:10px 0 4px;gap:6px}
+ .entry-steps>div{font-size:14px;padding:6px 0}
+ .entry-steps>div:not(.current) strong{display:none}
+ .entry-steps span{width:28px;height:28px}
+ .entry-intro .note{font-size:13px;margin:8px 0}
+ .entry-form{padding:18px 16px}
+ .entry-form h2{font-size:24px}
+ .entry .badge,.board-app .badge{font-size:13px}
+ .entry .muted,.phone-page .muted{font-size:14px}
+ .pose-guide span{font-size:14px}
+ .consent{font-size:15px}
+ .consent input{width:24px;height:24px;margin-top:2px}
+ .samples{grid-template-columns:repeat(5,1fr)}
+ .samples img{width:100%;height:auto;aspect-ratio:1}
+ .camera-box video{max-height:62vh}
+ .camera-controls{flex-wrap:wrap}
+ .camera-controls button{flex:1 1 140px}
+ /* Phone inputs must be 16px or iOS zooms the page on focus */
+ input,select,textarea{font-size:16px!important}
+ /* Comfortable tap targets */
+ .entry button,.entry a.button,.board-app button,.phone-page button,.button,.text-button{min-height:44px}
+ .review-face button.link{min-height:44px}
+ /* Board */
+ .board-app .eyebrow{font-size:13px}
+ .phone-choice{display:none}
+ .result-columns>.panel{max-height:none!important;overflow:visible!important}
+ .board-title h1{font-size:30px}
+ .board-capture{padding:16px}
+ .camera-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ .camera-actions .camera-shutter{grid-column:1/-1;min-height:56px;font-size:18px}
+ .upload-photo{width:100%}
+ /* Phone capture page */
+ .phone-page .brand{color:#203b2d;text-decoration:none}
+ .phone-page>.eyebrow{font-size:13px}
+ .phone-page footer{font-size:14px}
+}
+@media (max-width:700px) and (pointer:coarse){.phone-choice{display:none}}
+@media (max-width:700px){
+ .camera-box video{aspect-ratio:3/4;object-fit:cover;max-height:72vh;width:100%}
+}

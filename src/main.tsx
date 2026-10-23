@@ -207,7 +207,7 @@ function App() {
       <main className="board-main">
         <div className="board-title">
           <div>
-            <span className="eyebrow">{management ? 'YOUR BATCH' : 'SMARTBOARD ATTENDANCE'}</span>
+            <span className="eyebrow">{management ? 'YOUR BATCH' : 'TAKE ATTENDANCE'}</span>
             <h1>{BATCH_NAME}</h1>
             <p>{management ? 'Registered students and incoming submissions.' : `Take a photo of the class and see who is here · ${loaded ? students.length : '…'} registered students`}</p>
           </div>

@@ -3,6 +3,8 @@ import {Camera, RefreshCw, Square, Upload, Video, X} from 'lucide-react';
 import type {DetectedFace} from './attendance';
 
 type FacingMode = 'user' | 'environment';
+/** Phones open the back camera first: the teacher points it at the class. Smartboards and laptops use their own camera. */
+export const onPhone = () => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 700px) and (pointer: coarse)').matches;
 export const MAX_RECORDING_SECONDS = 20;
 
 function inferFacing(label: string, fallback: FacingMode): FacingMode {
@@ -28,7 +30,7 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
     [error, setError] = useState(''),
     [devices, setDevices] = useState<MediaDeviceInfo[]>([]),
     [device, setDevice] = useState(''),
-    [facing, setFacing] = useState<FacingMode>(phone ? 'environment' : 'user'),
+    [facing, setFacing] = useState<FacingMode>(phone || onPhone() ? 'environment' : 'user'),
     [progress, setProgress] = useState<{fraction: number; stage: string} | null>(null),
     [recording, setRecording] = useState<number | null>(null);
 
@@ -162,7 +164,7 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
         <>
           <div className="board-preview camera-live">
             <video ref={video} muted playsInline autoPlay onClick={() => video.current?.play()}/>
-            {(phone || devices.length > 1) && !isRecording && (
+            {(phone || onPhone() || devices.length > 1) && !isRecording && (
               <button type="button" className="camera-flip" aria-label="Switch front and back camera" title="Switch camera" disabled={busy || disabled} onClick={rotateCamera}><RefreshCw size={24}/></button>
             )}
             {isRecording && <span className="recording-badge" role="status">● Recording {recording}s / {MAX_RECORDING_SECONDS}s · move slowly across the class</span>}
@@ -197,9 +199,9 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
       ) : (
         <div className="board-camera-empty">
           <div className="camera-symbol"><Camera size={48}/></div>
-          <h2>{phone ? 'Take attendance with your phone' : 'Your classroom. One capture.'}</h2>
-          <p>{phone ? 'The back camera opens first. Take a photo or record a slow video across the class.' : 'Open the camera, then take a photo or record a short video of the class.'}</p>
-          <button className="primary" disabled={busy} onClick={() => open(undefined, phone ? 'environment' : facing)}><Camera size={22}/>{busy && !progress ? 'Opening camera…' : 'Open camera'}</button>
+          <h2>{phone || onPhone() ? 'Take attendance with your phone' : 'Your classroom. One capture.'}</h2>
+          <p>{phone || onPhone() ? 'The back camera opens first. Take a photo or record a slow video across the class.' : 'Open the camera, then take a photo or record a short video of the class.'}</p>
+          <button className="primary" disabled={busy} onClick={() => open(undefined, phone || onPhone() ? 'environment' : facing)}><Camera size={22}/>{busy && !progress ? 'Opening camera…' : 'Open camera'}</button>
         </div>
       )}
       <label className={`button upload-photo ${busy || disabled ? 'disabled' : ''}`}>
