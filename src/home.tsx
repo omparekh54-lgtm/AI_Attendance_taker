@@ -23,6 +23,7 @@ export function Home() {
             <span>Enter your name and SAP ID and take a few face photos. About two minutes.</span>
           </a>
         </div>
+        <p className="home-extra">Already registered? <a href="/?page=register&mode=side">Add side views of your face</a> so you are recognised when turned to the side in class.</p>
       </main>
       <footer>EigenRoll · Face features + PCA / LDA attendance</footer>
     </div>

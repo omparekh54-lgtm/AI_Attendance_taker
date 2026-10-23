@@ -1,7 +1,7 @@
 import {predictIdentity} from './identity';
 import {predict, type Model} from './model';
 import type {Face} from './store';
-import {AUTO_MARK_MIN_FACE_PX} from './face-geometry';
+import {AUTO_MARK_MIN_FACE_PX, TURNED_FACE_YAW} from './face-geometry';
 /** frames: first and last video frame this person was tracked in (video captures only). */
 export type DetectedFace={sourceWidth?:number;sourceHeight?:number;face:Face;usable:boolean;box?:{x:number;y:number;w:number;h:number};frames?:[number,number]};
 /** studentId: confidently recognised. suggestion: likely student the teacher can confirm with one tap. candidates: closest students, best first. */
@@ -19,6 +19,8 @@ export function recognizeCapture(model:Model, faces:DetectedFace[]):Observation[
    // Small, distant faces are never marked on their own: the teacher confirms them with one tap.
    const facePx=f.box&&f.sourceWidth?Math.min(f.box.w*f.sourceWidth,f.box.h*(f.sourceHeight??f.sourceWidth)):Infinity;
    if(p.accepted&&facePx<AUTO_MARK_MIN_FACE_PX)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,reason:'Small face — please confirm'};
+   // Turned and side-view faces are confirmed by the teacher: they are where look-alikes get mixed up.
+   if(p.accepted&&Math.abs(f.face.yaw??0)>=TURNED_FACE_YAW)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,reason:'Turned face — please confirm'};
    if(p.accepted)return {id,image,studentId:p.label,distance:p.distance,candidates:p.candidates,frames:f.frames};
    return {id,image,suggestion:p.suggested?p.label:undefined,candidates:p.candidates,distance:p.distance,reason:lowRes?'Low-resolution photo':p.suggested?'Please confirm':'Not recognised'};
   }

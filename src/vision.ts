@@ -1,5 +1,5 @@
 import {isTightPortrait, tileGrid, groupTileSizes, dedupeBoxes, MIN_RECOGNISABLE_FACE_PX} from './face-geometry';
-import {describeFace, describeClassroomFace} from './embeddings';
+import {describeFaceWithPose, describeClassroomFaceWithPose} from './embeddings';
 import {FaceDetector, FilesetResolver} from '@mediapipe/tasks-vision';
 import type {Face} from './store';
 import type {DetectedFace} from './attendance';
@@ -141,7 +141,9 @@ export async function describeDetection(frame: HTMLCanvasElement, d: Detection, 
   const face: Face = {image: crop.toDataURL('image/jpeg', 0.8), vector: gray.map(v => (v - mean) / Math.max(std, 0.05))};
   if (usable) {
     const sharpCrop = identityCrop(frame, cx, cy, size, angle, !!options.tight);
-    face.embedding = options.classroom ? await describeClassroomFace(sharpCrop) : await describeFace(sharpCrop);
+    const described = options.classroom ? await describeClassroomFaceWithPose(sharpCrop) : await describeFaceWithPose(sharpCrop);
+    face.embedding = described.vector;
+    face.yaw = Math.round(described.yaw * 1000) / 1000;
   }
   return {sourceWidth: w, sourceHeight: h, face, usable, box: {x: box.originX / w, y: box.originY / h, w: box.width / w, h: box.height / h}};
 }

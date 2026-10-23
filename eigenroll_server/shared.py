@@ -34,6 +34,9 @@ def db(path, method='GET', body=None, prefer=None):
 def query(table,**params): return table+'?'+urlencode(params)
 def valid_features(v): return isinstance(v,list) and len(v)==128 and all(type(x) in (float,int) and math.isfinite(x) and abs(x)<=5 for x in v)
 r5=lambda v:[round(x,5) for x in v]
+# Face features as seen in a class photo: 8 varied views plus up to 3 side views each way (room to grow).
+MAX_CLASSROOM=16
+def valid_yaw(v): return v is None or (type(v) in (int,float) and math.isfinite(v) and abs(v)<=10)
 SESSION_SECONDS=8*3600
 REMEMBER_SECONDS=30*24*3600
 def teacher(request):
@@ -121,6 +124,61 @@ def enrollments(request):
         return JsonResponse({'invite':signing.dumps({'classId':class_id},salt='enrollment',compress=True)})
     uuid.UUID(d['id']);db(query('eigenroll_enrollments',id='eq.'+d['id']),'DELETE');return JsonResponse({'ok':True})
 
+def validate_face(f):
+    if not isinstance(f,dict) or not isinstance(f.get('image'),str) or not f['image'].startswith('data:image/jpeg;base64,') or len(f['image'])>30000: raise GatewayError('Invalid face image.',400)
+    v=f.get('vector')
+    if not isinstance(v,list) or len(v)!=576 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>25 for x in v):raise GatewayError('Invalid face sample.',400)
+    if not valid_features(f.get('embedding')):raise GatewayError('Face features are missing. Refresh the page and take the samples again.',400)
+    if not valid_yaw(f.get('yaw')):raise GatewayError('Invalid face sample.',400)
+
+TURNED=0.3
+MAX_FACES=44
+# The new straight-on samples must clearly be the registered student (same threshold family the board uses).
+SAME_PERSON=0.5
+def distance(a,b): return math.sqrt(sum((x-y)**2 for x,y in zip(a,b)))
+
+def invite_class(request):
+    try: invite=signing.loads(request.GET.get('invite',''),salt='enrollment',max_age=30*24*3600)
+    except signing.BadSignature:raise GatewayError('This class link is invalid or expired. Ask your teacher for a new link.',400)
+    return invite['classId']
+
+@require_http_methods(['POST'])
+@protected
+def side_views(request):
+    """A registered student adds side views of their face without registering again.
+    Only accepted when the new straight-on samples match the faces already registered for that SAP ID."""
+    class_id=invite_class(request)
+    limit(request,'side-views',30)
+    d=data(request);roll=d.get('roll','');faces=d.get('faces')
+    if not isinstance(roll,str) or not 1<=len(roll.strip())<=40:raise GatewayError('Enter your SAP ID.',400)
+    if not isinstance(faces,list) or not 6<=len(faces)<=20:raise GatewayError('Take 6–20 face samples.',400)
+    for f in faces: validate_face(f)
+    classroom=d.get('classroom',[])
+    if not isinstance(classroom,list) or len(classroom)>8 or not all(valid_features(v) for v in classroom):raise GatewayError('Invalid classroom features.',400)
+    straight=[f for f in faces if abs(f.get('yaw') or 0)<TURNED]
+    left=sum(1 for f in faces if (f.get('yaw') or 0)>=TURNED);right=sum(1 for f in faces if (f.get('yaw') or 0)<=-TURNED)
+    if len(straight)<2 or left<2 or right<2:raise GatewayError('Take at least 2 straight-on samples and 2 side views to each side.',400)
+    rows=db(query('eigenroll_entities',kind='eq.students',select='id,payload,revision',**{'payload->>classId':'eq.'+class_id,'payload->>roll':'eq.'+roll.strip()}))
+    if not rows:raise GatewayError('No registration was found for this SAP ID. Register first.',404)
+    row=rows[0];p=row['payload'];known=[f['embedding'] for f in p.get('faces',[]) if valid_features(f.get('embedding'))]
+    if not known:raise GatewayError('This registration has no face features yet. Ask your teacher to open the admin page once.',409)
+    nearest=lambda e:min(distance(e,k) for k in known)
+    if sum(1 for f in straight if nearest(f['embedding'])<=SAME_PERSON)<max(2,(len(straight)+1)//2):
+        raise GatewayError('These samples do not match the face registered for this SAP ID. Check the SAP ID, face the light and try again.',403)
+    # Side views must look like the same person as the matching straight-on samples taken just now.
+    anchors=known+[f['embedding'] for f in straight]
+    turned=[f for f in faces if abs(f.get('yaw') or 0)>=TURNED and min(distance(f['embedding'],a) for a in anchors)<=0.65]
+    if sum(1 for f in turned if f['yaw']>0)<2 or sum(1 for f in turned if f['yaw']<0)<2:
+        raise GatewayError('Some side views did not look like the same person. Take them again in good light.',400)
+    merged=(p.get('faces',[])+straight+turned)
+    if len(merged)>MAX_FACES:  # keep the newest side views; drop the oldest extra samples
+        merged=merged[:MAX_FACES-len(turned)]+turned
+    old=p.get('classroom',[])[:8]
+    payload={**p,'faces':merged,'classroom':(old+classroom)[:MAX_CLASSROOM],'classroomVersion':max(2,int(p.get('classroomVersion',1))),'sideViewsAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+    updated=db(query('eigenroll_entities',id='eq.'+row['id'],revision='eq.'+str(int(row['revision']))),'PATCH',{'payload':payload,'revision':int(row['revision'])+1,'updated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())},'return=representation')
+    if not updated:raise GatewayError('Your registration was being updated at the same moment. Please try again.',409)
+    return JsonResponse({'ok':True,'name':p.get('name',''),'message':'Side views added. You can now be recognised when turned to the side.'})
+
 @require_http_methods(['GET','POST'])
 @protected
 def enrollment(request):
@@ -136,18 +194,15 @@ def enrollment(request):
     name=d.get('name','');roll=d.get('roll','');faces=d.get('faces')
     if not isinstance(name,str) or not isinstance(roll,str) or not 1<=len(name.strip())<=100 or not 1<=len(roll.strip())<=40:raise GatewayError('Enter a full name and SAP ID.',400)
     if not isinstance(faces,list) or not 20<=len(faces)<=30:raise GatewayError('Collect 20–30 accepted face samples.',400)
-    for f in faces:
-        if not isinstance(f,dict) or not isinstance(f.get('image'),str) or not f['image'].startswith('data:image/jpeg;base64,') or len(f['image'])>30000: raise GatewayError('Invalid face image.',400)
-        v=f.get('vector')
-        if not isinstance(v,list) or len(v)!=576 or any(type(x) not in (float,int) or not math.isfinite(x) or abs(x)>25 for x in v):raise GatewayError('Invalid face sample.',400)
-        embedding=f.get('embedding')
-        if not valid_features(embedding):raise GatewayError('Face features are missing. Refresh the page and take the samples again.',400)
+    for f in faces: validate_face(f)
     classroom=d.get('classroom',[])
-    if not isinstance(classroom,list) or len(classroom)>8 or not all(valid_features(v) for v in classroom):raise GatewayError('Invalid classroom features.',400)
+    if not isinstance(classroom,list) or len(classroom)>MAX_CLASSROOM or not all(valid_features(v) for v in classroom):raise GatewayError('Invalid classroom features.',400)
+    version=d.get('classroomVersion',1)
+    if type(version) is not int or not 1<=version<=100:raise GatewayError('Invalid classroom features.',400)
     students=db(query('eigenroll_entities',kind='eq.students',select='payload',**{'payload->>classId':'eq.'+invite['classId'],'payload->>roll':'eq.'+roll.strip()}))
     if students: raise GatewayError('This SAP ID is already registered. Contact your teacher if your details need to change.',409)
     ident=str(uuid.uuid4())
-    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,
+    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,'classroomVersion':version,
             'registeredAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
     # Registered students join the attendance roster immediately; the board builds its model from the roster.
     db('eigenroll_entities','POST',{'id':'students:'+ident,'kind':'students','payload':record})

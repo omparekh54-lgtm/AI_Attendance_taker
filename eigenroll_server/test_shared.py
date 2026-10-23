@@ -83,7 +83,7 @@ class SharedSecurityTests(SimpleTestCase):
         with patch('eigenroll_server.shared.db',side_effect=gateway):
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face(False) for _ in range(20)]}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[9.0]*128]}).status_code,400)
-            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*9}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*17}).status_code,400)
     def test_attendance_board_needs_no_key_and_never_sends_photos(self):
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[0.123456789]*128}]*20,'classroom':[[0.2]*128]*8}
         with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]) as db:
@@ -130,3 +130,34 @@ class SharedSecurityTests(SimpleTestCase):
             transport.return_value.__enter__.return_value=response
             self.assertEqual(db('eigenroll_entities'),[{'id':'example'}])
             self.assertEqual(transport.call_args.args[0].get_header('Accept-encoding'),'gzip')
+
+
+@patch.dict(os.environ,ENV)
+class SideViewTests(SimpleTestCase):
+    def post(self,path,payload):return self.client.post(path,json.dumps(payload),content_type='application/json')
+    def face(self,shift,yaw):return {'image':'data:image/jpeg;base64,eA==','vector':[0.0]*576,'embedding':[0.01+shift]*128,'yaw':yaw}
+    def setUp(self):
+        self.token=signing.dumps({'classId':'classroom'},salt='enrollment')
+        self.stored={'id':'students:s1','revision':3,'payload':{'id':'s1','classId':'classroom','name':'Asha','roll':'7','faces':[self.face(0,0.0) for _ in range(20)],'classroom':[[0.02]*128]*8}}
+    def run_with(self,faces):
+        written=[]
+        def gateway(path,method='GET',body=None,*args):
+            if path.startswith('rpc/'):return True
+            if method=='PATCH':written.append((path,body));return [{'revision':4}]
+            return [self.stored]
+        with patch.dict(os.environ,ENV),patch('eigenroll_server.shared.db',side_effect=gateway):
+            r=self.post('/api/side-views?invite='+self.token,{'roll':'7','faces':faces,'classroom':[[0.03]*128]*4})
+        return r,written
+    def test_matching_student_adds_side_views(self):
+        faces=[self.face(0.001,0.0)]*2+[self.face(0.003,0.6)]*2+[self.face(0.003,-0.5)]*2
+        r,written=self.run_with(faces)
+        self.assertEqual(r.status_code,200,r.content)
+        path,body=written[0];self.assertIn('revision=eq.3',path);self.assertEqual(body['revision'],4)
+        self.assertEqual(len(body['payload']['faces']),26);self.assertEqual(len(body['payload']['classroom']),12);self.assertEqual(body['payload']['classroomVersion'],2)
+    def test_someone_else_cannot_add_faces_to_a_registration(self):
+        faces=[self.face(0.2,0.0)]*2+[self.face(0.2,0.6)]*2+[self.face(0.2,-0.5)]*2
+        r,written=self.run_with(faces)
+        self.assertEqual(r.status_code,403);self.assertEqual(written,[])
+    def test_side_views_must_cover_both_sides(self):
+        r,written=self.run_with([self.face(0.001,0.0)]*4+[self.face(0.003,0.6)]*2)
+        self.assertEqual(r.status_code,400);self.assertEqual(written,[])

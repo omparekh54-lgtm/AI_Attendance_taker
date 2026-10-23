@@ -17,3 +17,6 @@ const bx=(x:number,y:number,s:number,score:number)=>({score,box:{originX:x,origi
 test('Duplicate and nested boxes on one face collapse to the best one',()=>{const r=dedupeBoxes([bx(100,100,50,.7),bx(110,108,40,.9),bx(95,90,70,.6)]);assert.equal(r.length,1);assert.equal(r[0].score,.9)});
 test('Neighbouring faces that only touch are both kept',()=>{const r=dedupeBoxes([bx(100,100,50,.9),bx(140,100,50,.8),bx(300,100,40,.7)]);assert.equal(r.length,3)});
 test('12 MP phone photos get a third, finer scan for back rows',()=>{assert.deepEqual(groupTileSizes(4032,3024),[2016,1210,756]);assert.deepEqual(groupTileSizes(1920,1080),[720])});
+import {yawFromLandmarks} from '../src/face-geometry';
+const face=(noseX:number)=>Array.from({length:68},(_,i)=>i>=36&&i<42?{x:40,y:50}:i>=42&&i<48?{x:60,y:50}:i===30?{x:noseX,y:65}:{x:50,y:80});
+test('Head turn is 0 facing the camera and grows as the nose moves sideways',()=>{assert.equal(yawFromLandmarks(face(50)),0);assert.ok(Math.abs(yawFromLandmarks(face(62))-0.6)<1e-9);assert.ok(yawFromLandmarks(face(38))<-0.5);assert.equal(yawFromLandmarks([]),0)});

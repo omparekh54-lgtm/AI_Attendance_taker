@@ -42,6 +42,14 @@ class PhoneCaptureTests(SimpleTestCase):
         self.assertEqual(r.status_code,200);self.assertEqual(r.json()['faces'],90)
         stored=db.call_args.args[2]['payload']['faces'][0]
         self.assertEqual(stored['frames'],[2,9]);self.assertEqual(stored['face']['vector'],[])
+    def test_phone_keeps_head_turn_and_rejects_nonsense(self):
+        ok={'face':{'image':'data:image/jpeg;base64,eA==','vector':[],'embedding':[0.01]*128,'yaw':0.72},'usable':True}
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[self.session]]) as db:
+            self.assertEqual(self.post(self.path,{'faces':[ok]}).status_code,200)
+        self.assertEqual(db.call_args.args[2]['payload']['faces'][0]['face']['yaw'],0.72)
+        bad={**ok,'face':{**ok['face'],'yaw':'left'}}
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',return_value=[self.session]):
+            self.assertEqual(self.post(self.path,{'faces':[bad]}).status_code,400)
     def test_phone_rejects_malformed_frame_ranges(self):
         face={'face':{'image':'data:image/jpeg;base64,eA==','vector':[]},'usable':True,'frames':['a',1]}
         with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',return_value=[self.session]):

@@ -18,3 +18,7 @@ test('Video: two people on screen together cannot both be the same student',()=>
 test('A small back-row face is only suggested, never marked automatically',()=>{const small:DetectedFace={face:{image:'',vector:[],embedding:idv(1,19)},usable:true,box:{x:.5,y:.1,w:26/4000,h:28/3000},sourceWidth:4000,sourceHeight:3000};
  const big:DetectedFace={...small,box:{x:.2,y:.6,w:90/4000,h:95/3000},face:{image:'',vector:[],embedding:idv(2,19)}};
  const [s,b]=recognizeCapture(idModel,[small,big]);assert.equal(s.studentId,undefined);assert.equal(s.suggestion,'1');assert.equal(b.studentId,'2')});
+test('A turned or side-view face is only suggested, never marked automatically',()=>{const big={x:.2,y:.6,w:90/4000,h:95/3000};
+ const side:DetectedFace={face:{image:'',vector:[],embedding:idv(1,19),yaw:0.7},usable:true,box:big,sourceWidth:4000,sourceHeight:3000};
+ const front:DetectedFace={face:{image:'',vector:[],embedding:idv(2,19),yaw:0.05},usable:true,box:{...big,x:.6},sourceWidth:4000,sourceHeight:3000};
+ const [s,f]=recognizeCapture(idModel,[side,front]);assert.equal(s.studentId,undefined);assert.equal(s.suggestion,'1');assert.match(s.reason!,/Turned/);assert.equal(f.studentId,'2')});

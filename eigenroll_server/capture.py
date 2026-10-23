@@ -4,7 +4,7 @@ from django.core import signing
 from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
-from .shared import db, query, teacher, data, protected, GatewayError, limit
+from .shared import db, query, teacher, data, protected, GatewayError, limit, valid_yaw
 
 PHONE_MAX_FACES=150
 PHONE_MAX_BYTES=2_500_000
@@ -66,6 +66,7 @@ def phone(request):
         if not isinstance(vector,list) or len(vector) not in (0,576) or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>25 for v in vector):raise ValueError()
         embedding=face.get('embedding')
         if embedding is not None and (not isinstance(embedding,list) or len(embedding)!=128 or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>5 for v in embedding)):raise ValueError()
+        if not valid_yaw(face.get('yaw')):raise ValueError()
         frames=item.get('frames')
         if frames is not None and (not isinstance(frames,list) or len(frames)!=2 or any(type(v) is not int or not 0<=v<=10000 for v in frames)):raise ValueError()
     payload={'id':str(uuid.uuid4()),'faces':[{'face':x['face'],'usable':x['usable'],**({'frames':x['frames']} if x.get('frames') else {})} for x in faces]}

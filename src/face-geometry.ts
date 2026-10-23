@@ -39,3 +39,19 @@ export function dedupeBoxes<T extends {score: number; box: Box}>(items: T[]): T[
   }
   return kept;
 }
+
+/** Head turn from 68 face landmarks: nose tip offset from the eye midpoint, in eye-distance units.
+ *  About 0 facing the camera, ±0.3 clearly turned, ±0.6 or more a side view. Sign = direction in the image. */
+export function yawFromLandmarks(points: {x: number; y: number}[]) {
+  if (points.length < 68) return 0;
+  const mean = (from: number, to: number) => {
+    const p = points.slice(from, to);
+    return {x: p.reduce((n, q) => n + q.x, 0) / p.length, y: p.reduce((n, q) => n + q.y, 0) / p.length};
+  };
+  const left = mean(36, 42), right = mean(42, 48), eyes = Math.hypot(right.x - left.x, right.y - left.y);
+  if (!eyes) return 0;
+  return (points[30].x - (left.x + right.x) / 2) / eyes;
+}
+/** Faces turned at least this much are only suggested for the teacher to confirm, never marked automatically.
+ *  On the 26 students' photos this removed every wrong mark in the look-alike test (2/131 → 0/131). */
+export const TURNED_FACE_YAW = 0.3;

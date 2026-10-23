@@ -1,6 +1,7 @@
 import {IDENTITY_EXTRACTOR} from './identity';
 import {describeFaceDataUrl} from './embeddings';
-import {classroomFeatures} from './classroom-features';
+import {classroomFeatures, CLASSROOM_VERSION} from './classroom-features';
+const needsClassFeatures = (s: Student) => !s.classroom?.length || (s.classroomVersion ?? 1) < CLASSROOM_VERSION;
 import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, RefreshCw, RotateCcw, ScanFace, Smartphone, Users} from 'lucide-react';
@@ -111,11 +112,13 @@ function App() {
           setBusy(`Preparing face features ${++prepared} / ${total}`);
           f.embedding = await describeFaceDataUrl(f.image);
         }
-        const needClass = roster.filter(s => !s.classroom?.length && s.faces.every(f => f.image && f.embedding));
+        const needClass = roster.filter(s => needsClassFeatures(s) && s.faces.every(f => f.image && f.embedding));
         let done = 0;
         for (const s of needClass) {
           setBusy(`Preparing classroom recognition ${++done} / ${needClass.length}`);
-          s.classroom = await classroomFeatures(s.faces.map(f => ({image: f.image, embedding: f.embedding!})));
+          const result = await classroomFeatures(s.faces.map(f => ({image: f.image, embedding: f.embedding!, yaw: f.yaw})));
+          s.classroom = result.classroom; s.classroomVersion = CLASSROOM_VERSION;
+          s.faces.forEach((f, i) => { f.yaw = Math.round(result.yaws[i] * 1000) / 1000; });
         }
       }
       const trained = await trainModel(roster);
@@ -129,7 +132,7 @@ function App() {
   useEffect(() => {
     const signature = rosterSignature(students);
     // On the teacher page, also fill in class-photo features for students registered before they existed.
-    const missingClassFeatures = management && students.some(s => !s.classroom?.length && s.faces.every(f => f.image));
+    const missingClassFeatures = management && students.some(s => needsClassFeatures(s) && s.faces.every(f => f.image));
     if (!loaded || students.length < 2 || (validModel && !missingClassFeatures) || attempted.current === signature) return;
     attempted.current = signature;
     void train();

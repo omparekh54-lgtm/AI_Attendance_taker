@@ -1,3 +1,4 @@
+import {yawFromLandmarks} from './face-geometry';
 /** Local face descriptors. Only the recognition and landmark models are loaded. */
 let engine:Promise<typeof import('@vladmandic/face-api')>|undefined;
 let queue:Promise<unknown>=Promise.resolve();
@@ -26,7 +27,9 @@ export async function detectFaceBoxes(source:HTMLCanvasElement,minConfidence:num
   return found.map(d=>({x:d.box.x,y:d.box.y,width:d.box.width,height:d.box.height,score:d.score}));
  });queue=work.catch(()=>{});return work;
 }
-export async function describeFace(source:HTMLCanvasElement|HTMLImageElement){
+export async function describeFace(source:HTMLCanvasElement|HTMLImageElement){return (await describeFaceWithPose(source)).vector}
+/** Identity features plus head turn (yawFromLandmarks) from the tiny landmark model. */
+export async function describeFaceWithPose(source:HTMLCanvasElement|HTMLImageElement):Promise<{vector:number[];yaw:number}>{
  const work=queue.then(async()=>{
   const api=await embeddingReady();const landmarks=await api.detectFaceLandmarksTiny(source);
   if(Array.isArray(landmarks))throw Error('Expected one aligned face crop.');
@@ -35,7 +38,7 @@ export async function describeFace(source:HTMLCanvasElement|HTMLImageElement){
   const result=await api.computeFaceDescriptor(aligned[0]);
   const vector=Array.from(result as Float32Array);
   if(vector.length!==128||vector.some(v=>!Number.isFinite(v)))throw Error('Could not extract valid face features.');
-  return vector;
+  return {vector,yaw:yawFromLandmarks(landmarks.positions)};
  });queue=work.catch(()=>{});return work;
 }
 /** Full 68-point landmark model: better alignment for small, angled classroom faces. Loaded on first classroom scan. */
@@ -45,16 +48,17 @@ function mirrored(source:HTMLCanvasElement){const c=document.createElement('canv
 /** Classroom-photo descriptor: full-landmark alignment, averaged with the mirror image.
  *  Compatible with enrolment descriptors (same recognition network); on labelled group photos it doubled
  *  automatic matches (5 to 10 of 22) with no wrong students and no strangers accepted. */
-export async function describeClassroomFace(source:HTMLCanvasElement){
- const work=queue.then(async()=>{
+export async function describeClassroomFace(source:HTMLCanvasElement){return (await describeClassroomFaceWithPose(source)).vector}
+export async function describeClassroomFaceWithPose(source:HTMLCanvasElement):Promise<{vector:number[];yaw:number}>{
+ const work=queue.then(async()=>{let yaw=0;
   const api=await classroomReady();
-  const one=async(c:HTMLCanvasElement)=>{const landmarks=await api.detectFaceLandmarks(c);if(Array.isArray(landmarks))throw Error('Expected one aligned face crop.');
+  const one=async(c:HTMLCanvasElement,measure=false)=>{const landmarks=await api.detectFaceLandmarks(c);if(Array.isArray(landmarks))throw Error('Expected one aligned face crop.');if(measure)yaw=yawFromLandmarks(landmarks.positions);
    const aligned=await api.extractFaces(c,[landmarks.align()]);if(!aligned[0])throw Error('The face could not be aligned.');return Array.from(await api.computeFaceDescriptor(aligned[0]) as Float32Array)};
-  const a=await one(source),b=await one(mirrored(source));
+  const a=await one(source,true),b=await one(mirrored(source));
   const sum=a.map((v,i)=>v+b[i]),scale=Math.hypot(...a)/Math.max(Math.hypot(...sum),1e-9);
   const vector=sum.map(v=>v*scale);
   if(vector.length!==128||vector.some(v=>!Number.isFinite(v)))throw Error('Could not extract valid face features.');
-  return vector;
+  return {vector,yaw};
  });
  queue=work.catch(()=>{});return work;
 }
@@ -63,6 +67,9 @@ export async function describeFaceDataUrl(url:string){const image=new Image();im
 /** Describe an enrolment photo as it would look in a class photo with a face `facePx` wide:
  *  shrink the 96 px crop to that size, then upscale it the way a classroom scan does. */
 export async function describeAsSeenInClass(url: string, facePx: number) {
+  return (await describeAsSeenInClassWithPose(url, facePx)).vector;
+}
+export async function describeAsSeenInClassWithPose(url: string, facePx: number) {
   const image = new Image();
   image.src = url;
   await image.decode();
@@ -77,5 +84,5 @@ export async function describeAsSeenInClass(url: string, facePx: number) {
   const ux = up.getContext('2d')!;
   ux.imageSmoothingQuality = 'high';
   ux.drawImage(small, 0, 0, 96, 96);
-  return describeClassroomFace(up);
+  return describeClassroomFaceWithPose(up);
 }
