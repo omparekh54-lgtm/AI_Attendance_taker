@@ -21,6 +21,7 @@ import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
 import {recognizeCapture, type DetectedFace, type Observation} from '../src/attendance';
 import * as identity from '../src/identity';
+import * as counting from '../src/head-count';
 // Tuning only: IMPOSTOR_PERCENTILE / IMPOSTOR_GAP override the per-student limit settings (newer code only).
 const tuning = identity as {IMPOSTOR?: {percentile: number; gap: number}};
 if (tuning.IMPOSTOR && process.env.IMPOSTOR_PERCENTILE) tuning.IMPOSTOR.percentile = Number(process.env.IMPOSTOR_PERCENTILE);
@@ -93,8 +94,16 @@ const face = (embedding: number[], frameEmbeddings?: number[][]): DetectedFace =
 // The app's recognizeCapture gained a third argument (remembered strangers). Older versions simply ignore it.
 const recognise = recognizeCapture as unknown as (m: ReturnType<typeof buildModel>, f: DetectedFace[], strangers?: number[][]) => Observation[];
 
+type Count = {lessons: number; exact: number; off1: number; totalError: number; naiveError: number; over: number; under: number};
+/** Older code has no head count: the closest it gives is students present plus every other face, photo by photo. */
+function countPeople(result: Observation[]) {
+  const present = new Set(result.flatMap(o => (o.studentId ? [o.studentId] : [])));
+  return counting.headCount ? counting.headCount(result, present, Number(process.env.SAME_PERSON ?? counting.SAME_PERSON_DISTANCE)).total : present.size + result.filter(o => !o.studentId).length;
+}
+
 function run(people: Person[]) {
   const photo = tally(), video = tally(), secondLesson = tally();
+  const count: Count = {lessons: 0, exact: 0, off1: 0, totalError: 0, naiveError: 0, over: 0, under: 0};
   for (let fold = 0; fold < FOLDS; fold++) {
     const order = shuffle(people), registeredCount = Math.max(2, Math.round(order.length * 0.7));
     const registered = order.slice(0, registeredCount), strangers = order.slice(registeredCount);
@@ -117,9 +126,25 @@ function run(people: Person[]) {
       const dismissed = photoResult.flatMap((o, i) => (truth[i] === null && !o.studentId ? [photoFaces[i]] : []));
       const next = [...present.map(p => harder(pick(held.get(p.id)!))), ...strangers.map(p => harder(pick(p.samples)))];
       score(secondLesson, truth, recognise(model, next.map(e => face(e)), dismissed));
+
+      // Head count: two overlapping photos (left and right half of the room; the middle third is in both), plus a
+      // video where a few people leave the view and come back (two separate tracks of the same person).
+      const room = shuffle([...present.map(p => ({p, student: true})), ...strangers.map(p => ({p, student: false}))]);
+      const third = Math.ceil(room.length / 3), left = room.slice(0, 2 * third), right = room.slice(third);
+      const sampleOf = (x: {p: Person; student: boolean}) => harder(pick(x.student ? held.get(x.p.id)! : x.p.samples));
+      const captures: Observation[] = [];
+      [left, right].forEach((group, c) => captures.push(...recognise(model, group.map(x => face(sampleOf(x)))).map(o => ({...o, capture: c + 1}))));
+      const comeback = room.filter(() => random() < 0.15);
+      const tracks = [...room.map(x => ({x, frames: [0, 20] as [number, number]})), ...comeback.map(x => ({x, frames: [30, 39] as [number, number]}))];
+      captures.push(...recognise(model, tracks.map(t => { const f = [0, 1, 2, 3].map(() => sampleOf(t.x)); return {...face(mean(f), f), frames: t.frames}; })).map(o => ({...o, capture: 3})));
+      const counted = countPeople(captures), naive = new Set(captures.flatMap(o => (o.studentId ? [o.studentId] : []))).size + captures.filter(o => !o.studentId).length;
+      const error = counted - room.length;
+      count.lessons++; if (error === 0) count.exact++; if (Math.abs(error) <= 1) count.off1++;
+      count.totalError += Math.abs(error); count.naiveError += Math.abs(naive - room.length);
+      if (error > 0) count.over++; if (error < 0) count.under++;
     }
   }
-  return {photo, video, secondLesson};
+  return {photo, video, secondLesson, count};
 }
 
 const people = source ? loadRoster(source) : syntheticClass();
@@ -142,6 +167,8 @@ else {
   const pct = (a: number, b: number) => (b ? (100 * a / b).toFixed(1) + '%' : '–');
   console.log(`${source ? 'Roster ' + source : 'Synthetic class'} · ${people.length} people · ${FOLDS} splits · ~30% treated as unregistered\n`);
   console.log('Scenario        | Students marked right | Marked WRONG student | Strangers given a name | Strangers suggested | Students to confirm');
-  for (const [name, t] of Object.entries(result))
+  const {count} = result;
+  console.log(`Head count over ${count.lessons} lessons (2 overlapping photos + 1 video): exact ${count.exact}, within ±1 ${count.off1}, average error ${(count.totalError / count.lessons).toFixed(2)} people (over ${count.over}, under ${count.under}); adding up faces per photo would be off by ${(count.naiveError / count.lessons).toFixed(1)}\n`);
+  for (const [name, t] of Object.entries(result).filter(([n]) => n !== 'count') as [string, Tally][])
     console.log(`${name.padEnd(15)} | ${pct(t.markedRight, t.present).padStart(21)} | ${String(t.markedWrong).padStart(20)} | ${(t.strangerMarked + ' / ' + t.strangers).padStart(22)} | ${pct(t.strangerSuggested, t.strangers).padStart(19)} | ${pct(t.suggestedRight, t.present).padStart(19)}`);
 }

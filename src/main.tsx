@@ -11,6 +11,7 @@ import {config} from './config';
 import {load, loadAttendance, save, initial, csv, download, type State, type Student} from './store';
 import {recognizeCapture, recheckAgainstStranger, rosterSignature, type DetectedFace, type Observation} from './attendance';
 import {loadNotStudents, rememberNotStudents, forgetNotStudents} from './not-students';
+import {headCount} from './head-count';
 import {loadSavedAttendance, saveAttendance, clearSavedAttendance, type SavedAttendance} from './saved-attendance';
 import type {Model} from './model';
 import type {Sample} from './model';
@@ -168,7 +169,9 @@ function App() {
   function notAStudent(matching: (o: Observation) => boolean) {
     const embeddings = observations.filter(o => !o.studentId && matching(o)).flatMap(o => (o.embedding ? [o.embedding] : []));
     setNotStudents(prev => rememberNotStudents(prev, embeddings));
-    const rest = embeddings.reduce((list, e) => recheckAgainstStranger(list, e), observations.filter(o => o.studentId || !matching(o)));
+    // They leave the review list but are still people in the room, so they stay in the head count.
+    const marked = observations.map(o => (!o.studentId && matching(o) ? {...o, notStudent: true, suggestion: undefined, reason: 'Not a student'} : o));
+    const rest = embeddings.reduce((list, e) => recheckAgainstStranger(list, e), marked);
     const unmarked = rest.filter((o, i) => !o.studentId && observations.find(x => x.id === o.id)?.studentId).length;
     setObservations(rest);
     if (unmarked) setNotice(`${unmarked} automatic match${unmarked === 1 ? '' : 'es'} also looked like this person and ${unmarked === 1 ? 'was' : 'were'} moved back to review.`);
@@ -176,6 +179,10 @@ function App() {
   function forgetStrangers() {
     if (!confirm(`Forget the ${notStudents.length} face${notStudents.length === 1 ? '' : 's'} marked “Not a student” on this board?`)) return;
     forgetNotStudents(); setNotStudents([]);
+  }
+  /** Teacher says a detection is not a person at all (a poster, a hand): it leaves the review list and the head count. */
+  function notAFace(observationId: string) {
+    setObservations(prev => prev.filter(o => o.id !== observationId));
   }
   /** Teacher says which student a face belongs to. */
   function assign(observationId: string, studentId: string) {
@@ -188,7 +195,9 @@ function App() {
   const present = students.filter(isPresent), absent = students.filter(s => !isPresent(s));
   // A face that most likely belongs to someone already present (e.g. caught again in a second photo) needs no review.
   const alreadyCounted = (o: Observation) => !!o.suggestion && !!byId.get(o.suggestion) && isPresent(byId.get(o.suggestion)!);
-  const unresolved = observations.filter(o => !o.studentId && !alreadyCounted(o));
+  const unresolved = observations.filter(o => !o.studentId && !o.notStudent && !alreadyCounted(o));
+  // Everyone in the room across all captures: students present, people to confirm, unregistered people, unclear faces.
+  const people = useMemo(() => headCount(observations, new Set(present.map(s => s.id))), [observations, present.map(s => s.id).join()]);
   // Likely students: one card per suggested student (closest face), noting how many separate photos agreed.
   const seenIn = new Map<string, Set<number>>();
   for (const o of unresolved) if (o.suggestion) seenIn.set(o.suggestion, (seenIn.get(o.suggestion) ?? new Set()).add(o.capture ?? 0));
@@ -207,7 +216,7 @@ function App() {
     download(`attendance-${BATCH_NAME.replace(/\W+/g, '-')}-${date}.csv`, '﻿' + csv(rows), 'text/csv;charset=utf-8');
   }
   async function copyAbsent() {
-    const text = `${BATCH_NAME} · ${new Date(startedAt || Date.now()).toLocaleDateString()}\nPresent ${present.length} / ${students.length}\nAbsent (${absent.length}):\n` + absent.map(s => `${s.name} (${s.roll})`).join('\n');
+    const text = `${BATCH_NAME} · ${new Date(startedAt || Date.now()).toLocaleDateString()}\nPresent ${present.length} / ${students.length} · ${people.total} people in the room\nAbsent (${absent.length}):\n` + absent.map(s => `${s.name} (${s.roll})`).join('\n');
     try { await navigator.clipboard.writeText(text); setNotice(`Absent list copied (${absent.length} student${absent.length === 1 ? '' : 's'}). Paste it anywhere.`); }
     catch { setError('Could not copy. Use Download CSV instead.'); }
   }
@@ -301,7 +310,17 @@ function App() {
                 <div className="count-present"><strong>{present.length}<small> / {students.length}</small></strong><span>Present</span></div>
                 <div className="count-absent"><strong>{absent.length}</strong><span>{captures ? 'Absent' : 'Not checked yet'}</span></div>
                 <div className={toConfirm.length ? 'count-review' : ''}><strong>{toConfirm.length}</strong><span>To confirm</span></div>
+                <div className="count-people"><strong>{captures ? people.total : '–'}</strong><span>People in the room</span></div>
               </div>
+              {captures > 0 && (
+                <p className="people-breakdown">
+                  {[`${people.students} student${people.students === 1 ? '' : 's'} present`,
+                    people.toConfirm ? `${people.toConfirm} to confirm` : '',
+                    people.unregistered ? `${people.unregistered} not registered` : '',
+                    people.unclear ? `${people.unclear} face${people.unclear === 1 ? '' : 's'} too unclear to identify` : ''].filter(Boolean).join(' · ')}
+                  {captures > 1 ? ' · the same person in several photos is counted once' : ''}
+                </p>
+              )}
 
               {toConfirm.length > 0 && (
                 <section className="panel review-panel">
@@ -310,7 +329,7 @@ function App() {
                   <div className="review-faces">
                     {toConfirm.map(o => (
                       <ReviewFace key={o.id} observation={o} seenIn={seenIn.get(o.suggestion!)!.size} students={students} byId={byId} isPresent={isPresent}
-                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.suggestion === o.suggestion)}/>
+                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.suggestion === o.suggestion)} onNotFace={() => notAFace(o.id)}/>
                     ))}
                   </div>
                 </section>
@@ -321,7 +340,7 @@ function App() {
                   <div className="review-faces">
                     {notRecognised.map(o => (
                       <ReviewFace key={o.id} observation={o} students={students} byId={byId} isPresent={isPresent}
-                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.id === o.id)}/>
+                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.id === o.id)} onNotFace={() => notAFace(o.id)}/>
                     ))}
                   </div>
                 </details>
@@ -353,9 +372,9 @@ function App() {
   );
 }
 
-function ReviewFace({observation: o, seenIn = 1, students, byId, isPresent, onAssign, onDismiss}: {
+function ReviewFace({observation: o, seenIn = 1, students, byId, isPresent, onAssign, onDismiss, onNotFace}: {
   observation: Observation; seenIn?: number; students: Student[]; byId: Map<string, Student>; isPresent: (s: Student) => boolean;
-  onAssign: (studentId: string) => void; onDismiss: () => void;
+  onAssign: (studentId: string) => void; onDismiss: () => void; onNotFace: () => void;
 }) {
   const suggested = o.suggestion ? byId.get(o.suggestion) : undefined;
   // Closest matches first, then everyone else alphabetically; students already present go last.
@@ -376,7 +395,10 @@ function ReviewFace({observation: o, seenIn = 1, students, byId, isPresent, onAs
         <option value="">{suggested ? 'Other…' : 'Who is this?'}</option>
         {options.map(s => <option key={s.id} value={s.id}>{s.name}{isPresent(s) ? ' (present)' : ''}</option>)}
       </select>
-      <button className="link" onClick={onDismiss}>Not a student</button>
+      <div className="review-links">
+        <button className="link" onClick={onDismiss} title="A person who is not registered in this class. Still counted as in the room.">Not a student</button>
+        <button className="link" onClick={onNotFace} title="Not a person (a poster, a hand…). Not counted.">Not a face</button>
+      </div>
     </div>
   );
 }

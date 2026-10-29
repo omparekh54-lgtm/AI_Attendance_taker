@@ -149,5 +149,29 @@
    "strangerSuggested": 1,
    "strangerUnknown": 1079
   }
+ },
+ "headCount": {
+  "what": "2 overlapping photos (middle third of the room in both) + 1 video in which ~15% of people leave and return; same seeds",
+  "samePersonDistance": 0.45,
+  "results": {
+   "normal": {
+    "lessons": 90,
+    "exact": 85,
+    "off1": 90,
+    "totalError": 5,
+    "naiveError": 1909,
+    "over": 5,
+    "under": 0
+   },
+   "harsh": {
+    "lessons": 90,
+    "exact": 88,
+    "off1": 90,
+    "totalError": 2,
+    "naiveError": 2481,
+    "over": 2,
+    "under": 0
+   }
+  }
  }
 }

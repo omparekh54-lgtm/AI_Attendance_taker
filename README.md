@@ -84,6 +84,24 @@ Classroom accuracy remains unmeasured. Hidden, blurred, distant, or side-on face
 
 No registered student was ever marked as the wrong student, before or after. The price is more one-tap confirmations in harsh conditions (students not marked automatically go to **Confirm these students**, not to absent). These are generated faces: run the script on the real roster to get the class's own numbers.
 
+### How many people are in the room
+
+The board shows **People in the room** next to Present, Absent and To confirm, with a breakdown underneath (students present · to confirm · not registered · faces too unclear to identify). It combines every photo and video of the lesson:
+
+- Students count once however many photos they are in; students marked present by hand count too.
+- Other faces are linked across captures by face features (closer than 0.45 = same person), so someone in both the left and the right photo, or who leaves a video and comes back, counts once. Two faces in the same photo, or on screen at the same moment of a video, are always two people.
+- **Not a student** hides a face from review but keeps the person in the count; **Not a face** (posters, hands) removes it from the count.
+- Faces too small or blurry to read cannot be told apart across photos, so the count uses the largest number of them in any single capture rather than adding them up.
+
+Open-set benchmark, head-count scenario (two overlapping photos with the middle third of the room in both, plus a video in which about 15% of people leave and come back; ~27 people per lesson, 90 lessons per condition):
+
+| Conditions | Count exactly right | Within ±1 | Average error | Adding up faces per capture |
+|---|---|---|---|---|
+| Normal | 94% | 100% | 0.06 people | off by 21 |
+| Harsh | 98% | 100% | 0.02 people | off by 28 |
+
+These are generated faces in which every person is detected. Real counts also depend on the detector finding everyone (hidden or turned-away people are missed) and not mistaking posters for faces, which a real class recording is needed to measure.
+
 ## Startup performance
 
 The attendance screen renders while the current batch loads. One compact snapshot request supplies the roster, sample counts, and saved recognition model; photos and training vectors are omitted. A missing or stale model still loads the training samples through the original endpoint. Camera detection, phone pairing, registration, and batch management load on demand. API responses use gzip when supported and remain uncached.

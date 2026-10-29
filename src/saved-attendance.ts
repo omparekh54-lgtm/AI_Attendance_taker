@@ -16,9 +16,11 @@ export function loadSavedAttendance(now = new Date(), storage: Pick<Storage, 'ge
 }
 
 export function saveAttendance(record: SavedAttendance, storage: Pick<Storage, 'setItem'> = localStorage) {
-  // Recognised faces only need their student id; keep face images just for the ones still to check.
+  // Recognised and "Not a student" faces need no image; keep face features (rounded) so the head count can still
+  // tell one person from another after a refresh. Faces still to check keep their images.
+  const features = (e?: number[]) => e?.map(v => Math.round(v * 1e4) / 1e4);
   const compact = {...record, startedAt: record.startedAt || new Date().toISOString(),
-    observations: record.observations.map(o => (o.studentId ? {id: o.id, image: '', studentId: o.studentId, confirmed: o.confirmed} : o))};
+    observations: record.observations.map(o => (o.studentId || o.notStudent ? {...o, image: '', candidates: undefined, embedding: features(o.embedding)} : {...o, embedding: features(o.embedding)}))};
   try { storage.setItem(KEY, JSON.stringify(compact)); }
   catch {
     // Storage full: keep the decisions even if review thumbnails are lost.

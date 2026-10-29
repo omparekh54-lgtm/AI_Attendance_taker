@@ -6,8 +6,9 @@ import {AUTO_MARK_MIN_FACE_PX, TURNED_FACE_YAW} from './face-geometry';
  *  frameEmbeddings: the person's face features from each of their best video frames, recognised one by one. */
 export type DetectedFace={sourceWidth?:number;sourceHeight?:number;face:Face;usable:boolean;box?:{x:number;y:number;w:number;h:number};frames?:[number,number];frameEmbeddings?:number[][]};
 /** studentId: confidently recognised. suggestion: likely student the teacher can confirm with one tap. candidates: closest students, best first.
- *  embedding: kept for faces nobody was given, so "Not a student" can remember them. */
-export type Observation={id:string;image:string;frames?:[number,number];studentId?:string;suggestion?:string;candidates?:string[];reason?:string;distance?:number;confirmed?:boolean;capture?:number;embedding?:number[]};
+ *  embedding: face features, so "Not a student" can remember a face and the head count can recognise one person across photos.
+ *  notStudent: the teacher said this is not a student; it stays in the head count but leaves the review list. */
+export type Observation={id:string;image:string;frames?:[number,number];studentId?:string;suggestion?:string;candidates?:string[];reason?:string;distance?:number;confirmed?:boolean;capture?:number;embedding?:number[];notStudent?:boolean};
 const SMALL_SOURCE=240, DUPLICATE_GAP=.05;
 /** Video: share of a person's frames that must point to the same student before they are marked. Strangers tend to
  *  resemble different students in different frames, while a real student stays the same student. */
