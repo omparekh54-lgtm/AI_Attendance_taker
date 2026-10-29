@@ -1,0 +1,153 @@
+{
+ "what": "Open-set benchmark on generated classes (40 people, look-alikes, 3 seeds, 10 splits each, ~30% unregistered). before = main @ e5f1eb0, after = open-set-accuracy.",
+ "conditions": {
+  "0.2": "normal",
+  "0.3": "harsh"
+ },
+ "results": {
+  "0.2|photo|main": {
+   "present": 2156,
+   "markedRight": 2058,
+   "markedWrong": 0,
+   "suggestedRight": 75,
+   "suggestedWrong": 0,
+   "missed": 23,
+   "strangers": 1080,
+   "strangerMarked": 12,
+   "strangerSuggested": 296,
+   "strangerUnknown": 772
+  },
+  "0.2|photo|new": {
+   "present": 2156,
+   "markedRight": 2016,
+   "markedWrong": 0,
+   "suggestedRight": 104,
+   "suggestedWrong": 0,
+   "missed": 36,
+   "strangers": 1080,
+   "strangerMarked": 0,
+   "strangerSuggested": 55,
+   "strangerUnknown": 1025
+  },
+  "0.2|video|main": {
+   "present": 2156,
+   "markedRight": 2109,
+   "markedWrong": 0,
+   "suggestedRight": 26,
+   "suggestedWrong": 0,
+   "missed": 21,
+   "strangers": 1080,
+   "strangerMarked": 24,
+   "strangerSuggested": 307,
+   "strangerUnknown": 749
+  },
+  "0.2|video|new": {
+   "present": 2156,
+   "markedRight": 2015,
+   "markedWrong": 0,
+   "suggestedRight": 107,
+   "suggestedWrong": 0,
+   "missed": 34,
+   "strangers": 1080,
+   "strangerMarked": 0,
+   "strangerSuggested": 50,
+   "strangerUnknown": 1030
+  },
+  "0.2|secondLesson|main": {
+   "present": 2156,
+   "markedRight": 2053,
+   "markedWrong": 0,
+   "suggestedRight": 82,
+   "suggestedWrong": 0,
+   "missed": 21,
+   "strangers": 1080,
+   "strangerMarked": 12,
+   "strangerSuggested": 300,
+   "strangerUnknown": 768
+  },
+  "0.2|secondLesson|new": {
+   "present": 2156,
+   "markedRight": 2008,
+   "markedWrong": 0,
+   "suggestedRight": 119,
+   "suggestedWrong": 0,
+   "missed": 29,
+   "strangers": 1080,
+   "strangerMarked": 0,
+   "strangerSuggested": 0,
+   "strangerUnknown": 1080
+  },
+  "0.3|photo|main": {
+   "present": 2156,
+   "markedRight": 1922,
+   "markedWrong": 0,
+   "suggestedRight": 160,
+   "suggestedWrong": 2,
+   "missed": 72,
+   "strangers": 1080,
+   "strangerMarked": 17,
+   "strangerSuggested": 311,
+   "strangerUnknown": 752
+  },
+  "0.3|photo|new": {
+   "present": 2156,
+   "markedRight": 1706,
+   "markedWrong": 0,
+   "suggestedRight": 362,
+   "suggestedWrong": 1,
+   "missed": 87,
+   "strangers": 1080,
+   "strangerMarked": 1,
+   "strangerSuggested": 90,
+   "strangerUnknown": 989
+  },
+  "0.3|video|main": {
+   "present": 2156,
+   "markedRight": 2034,
+   "markedWrong": 0,
+   "suggestedRight": 65,
+   "suggestedWrong": 10,
+   "missed": 47,
+   "strangers": 1080,
+   "strangerMarked": 24,
+   "strangerSuggested": 307,
+   "strangerUnknown": 749
+  },
+  "0.3|video|new": {
+   "present": 2156,
+   "markedRight": 1642,
+   "markedWrong": 0,
+   "suggestedRight": 415,
+   "suggestedWrong": 0,
+   "missed": 99,
+   "strangers": 1080,
+   "strangerMarked": 0,
+   "strangerSuggested": 84,
+   "strangerUnknown": 996
+  },
+  "0.3|secondLesson|main": {
+   "present": 2156,
+   "markedRight": 1921,
+   "markedWrong": 0,
+   "suggestedRight": 161,
+   "suggestedWrong": 6,
+   "missed": 68,
+   "strangers": 1080,
+   "strangerMarked": 14,
+   "strangerSuggested": 303,
+   "strangerUnknown": 763
+  },
+  "0.3|secondLesson|new": {
+   "present": 2156,
+   "markedRight": 1666,
+   "markedWrong": 0,
+   "suggestedRight": 365,
+   "suggestedWrong": 4,
+   "missed": 121,
+   "strangers": 1080,
+   "strangerMarked": 0,
+   "strangerSuggested": 1,
+   "strangerUnknown": 1079
+  }
+ }
+}

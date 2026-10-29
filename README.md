@@ -61,13 +61,28 @@ Per face, the new classroom features doubled automatic matches on the group phot
 
 Results are kept on the device for the rest of the day, so a refresh does not lose them. **Download CSV** exports name, SAP ID, status and how each student was marked; **Copy absent list** copies a ready-to-paste list; **Start new attendance** clears the screen for the next class.
 
-Recognition is now hybrid: local MediaPipe detection and face alignment, pretrained 128-dimensional identity features from the pinned face-api package, followed by 32-component PCA and regularized LDA. A compact gallery keeps up to eight diverse samples per student. A match needs two close gallery neighbors, an absolute distance limit, a clear margin over the next identity, and agreement with PCA/LDA. A face is also accepted when it is within 0.47 of a student who is clearly ahead of everyone else (ratio ≤ 0.75, margin ≥ 0.12) and PCA/LDA agrees. On the class's 208 enrolment templates (leave-one-out and leave-one-student-out) this added correct matches with 0 wrong students and 0 unregistered faces accepted; on a synthetic group photo it raised automatic matches of enrolled people from 3 to 6 of 17, with 0 of 22 strangers accepted or suggested. In one photo, each student is given to at most one face: if two faces match the same student, the clearly closer one keeps the match and the rest go to review. The pixel-based Eigenface/Fisherface model remains available as the baseline implementation; the enhanced engine does not silently fall back to it when identity features are missing.
+Recognition is now hybrid: local MediaPipe detection and face alignment, pretrained 128-dimensional identity features from the pinned face-api package, followed by 32-component PCA and regularized LDA. A compact gallery keeps up to eight diverse samples per student. A match needs two close gallery neighbors, an absolute distance limit, a clear margin over the next identity, and agreement with PCA/LDA. Each student's distance limit is set from their own photos and from how close their **classmates** come to them (the closest 2% of classmate distances, minus 0.03, kept between 0.30 and 0.42): unregistered students are the same age and background, so the class is the best stand-in for strangers. There is deliberately no "far ahead of everyone" shortcut: the old 0.47 clear-lead rule was the main way strangers were given a student's name. Faces the teacher marks **Not a student** are remembered on that board (face features only, up to 300, with a Forget button); a later face about as close to one of them as to a student is never named or suggested, and unconfirmed automatic matches that look like them go back to review. In video, each person's sharpest 4 frames are also recognised one by one, and at least two thirds must pass for the same student. In one photo, each student is given to at most one face: if two faces match the same student, the clearly closer one keeps the match and the rest go to review. The pixel-based Eigenface/Fisherface model remains available as the baseline implementation; the enhanced engine does not silently fall back to it when identity features are missing.
 
 Recognition weights are copied from the installed package and served from this application. Only landmark and identity networks are loaded. Captures are processed on the device, and phone captures are transferred only to the connected board. New registrations include identity features. Manage batch can rebuild both models from stored samples; classmates do not need to register again for this upgrade.
 
 Enrollment-session diagnostic: 26 students / 680 samples. With every fifth image held out, the baseline recognized 83/132 correctly and the enhanced model recognized 119/132; neither assigned a wrong identity in that set. Five identity-exclusion folds tested 680 images with their student absent from training; the enhanced model rejected all 680. These are development diagnostics from the same registration sessions, not independent classroom accuracy or a universal false-match guarantee. See `research/recognition-enrollment-evaluation.json`.
 
 Classroom accuracy remains unmeasured. Hidden, blurred, distant, or side-on faces may require another capture or manual correction. This is not liveness verification. Unknown, low-quality, duplicate, or ambiguous matches remain unconfirmed and do not assign absences.
+
+### Unregistered people in the room (open-set test)
+
+`npx tsx scripts/open-set-benchmark.ts roster.json` (the board's `/api/attendance` response), or `--synthetic` for generated faces, leaves about 30% of the people out of training so they act as unregistered classmates, then runs class photos and videos through the app's own marking code. Per cell: students marked automatically / strangers given a student's name (of 1080) / strangers offered as "Is this …?". Generated classes with look-alikes, three seeds; "harsh" pulls classroom faces further towards the average face, as small, dim faces do.
+
+| Scenario | Before | After |
+|---|---|---|
+| Class photo (normal) | 95% / 12 / 27% | 94% / 0 / 5% |
+| Class video (normal) | 98% / 24 / 28% | 93% / 0 / 5% |
+| Next lesson, strangers remembered (normal) | 95% / 12 / 28% | 93% / 0 / 0% |
+| Class photo (harsh) | 89% / 17 / 29% | 79% / 1 / 8% |
+| Class video (harsh) | 94% / 24 / 28% | 76% / 0 / 8% |
+| Next lesson, strangers remembered (harsh) | 89% / 14 / 28% | 77% / 0 / 0% |
+
+No registered student was ever marked as the wrong student, before or after. The price is more one-tap confirmations in harsh conditions (students not marked automatically go to **Confirm these students**, not to absent). These are generated faces: run the script on the real roster to get the class's own numbers.
 
 ## Startup performance
 

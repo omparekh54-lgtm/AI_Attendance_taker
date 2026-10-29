@@ -1,4 +1,4 @@
-import {IDENTITY_EXTRACTOR} from './identity';
+import {IDENTITY_EXTRACTOR, IDENTITY_RULES} from './identity';
 import {describeFaceDataUrl} from './embeddings';
 import {classroomFeatures, CLASSROOM_VERSION} from './classroom-features';
 const needsClassFeatures = (s: Student) => !s.classroom?.length || (s.classroomVersion ?? 1) < CLASSROOM_VERSION;
@@ -9,7 +9,8 @@ import {Home} from './home';
 import {CameraCapture} from './camera';
 import {config} from './config';
 import {load, loadAttendance, save, initial, csv, download, type State, type Student} from './store';
-import {recognizeCapture, rosterSignature, type DetectedFace, type Observation} from './attendance';
+import {recognizeCapture, recheckAgainstStranger, rosterSignature, type DetectedFace, type Observation} from './attendance';
+import {loadNotStudents, rememberNotStudents, forgetNotStudents} from './not-students';
 import {loadSavedAttendance, saveAttendance, clearSavedAttendance, type SavedAttendance} from './saved-attendance';
 import type {Model} from './model';
 import type {Sample} from './model';
@@ -47,13 +48,14 @@ function App() {
     [captures, setCaptures] = useState(0),
     [observations, setObservations] = useState<Observation[]>([]),
     [manual, setManual] = useState<Record<string, boolean>>({}),
-    [startedAt, setStartedAt] = useState('');
+    [startedAt, setStartedAt] = useState(''),
+    [notStudents, setNotStudents] = useState<number[][]>(() => loadNotStudents());
   const results = useRef<HTMLElement>(null), lock = useRef(false), currentModel = useRef<Model | undefined>(undefined), restored = useRef(false), captureCounter = useRef(0);
 
   const students = useMemo(() => state.students.filter(s => s.classId === BATCH_ID).sort((a, b) => a.name.localeCompare(b.name)), [state.students]);
   const byId = useMemo(() => new Map(students.map(s => [s.id, s])), [students]);
   const model = state.models[BATCH_ID],
-    validModel = model?.rosterSignature === rosterSignature(students) && model.identity?.extractor === IDENTITY_EXTRACTOR ? model : undefined;
+    validModel = model?.rosterSignature === rosterSignature(students) && model.identity?.extractor === IDENTITY_EXTRACTOR && model.identity.rules === IDENTITY_RULES ? model : undefined;
   currentModel.current = validModel;
 
   useEffect(() => {
@@ -142,7 +144,7 @@ function App() {
     const active = currentModel.current;
     if (!active) throw Error('Recognition is not ready. Prepare the model first.');
     const capture = ++captureCounter.current;
-    const batch = recognizeCapture(active, faces).map(o => ({...o, capture}));
+    const batch = recognizeCapture(active, faces, notStudents).map(o => ({...o, capture}));
     setObservations(prev => [...prev, ...batch].slice(-1000));
     setCaptures(n => n + 1);
     if (!startedAt) setStartedAt(new Date().toISOString());
@@ -160,6 +162,20 @@ function App() {
     if ((captures || Object.keys(manual).length) && !confirm('Start new attendance? The current results on this screen will be cleared.')) return;
     setPhone(false); setObservations([]); setManual({}); setCaptures(0); setStartedAt(''); setNotice(''); setError('');
     clearSavedAttendance();
+  }
+  /** Teacher says these faces are not students: remember them on this board, and send back to review any automatic
+   *  match in this attendance that looks about as much like them as like the student. */
+  function notAStudent(matching: (o: Observation) => boolean) {
+    const embeddings = observations.filter(o => !o.studentId && matching(o)).flatMap(o => (o.embedding ? [o.embedding] : []));
+    setNotStudents(prev => rememberNotStudents(prev, embeddings));
+    const rest = embeddings.reduce((list, e) => recheckAgainstStranger(list, e), observations.filter(o => o.studentId || !matching(o)));
+    const unmarked = rest.filter((o, i) => !o.studentId && observations.find(x => x.id === o.id)?.studentId).length;
+    setObservations(rest);
+    if (unmarked) setNotice(`${unmarked} automatic match${unmarked === 1 ? '' : 'es'} also looked like this person and ${unmarked === 1 ? 'was' : 'were'} moved back to review.`);
+  }
+  function forgetStrangers() {
+    if (!confirm(`Forget the ${notStudents.length} face${notStudents.length === 1 ? '' : 's'} marked “Not a student” on this board?`)) return;
+    forgetNotStudents(); setNotStudents([]);
   }
   /** Teacher says which student a face belongs to. */
   function assign(observationId: string, studentId: string) {
@@ -294,7 +310,7 @@ function App() {
                   <div className="review-faces">
                     {toConfirm.map(o => (
                       <ReviewFace key={o.id} observation={o} seenIn={seenIn.get(o.suggestion!)!.size} students={students} byId={byId} isPresent={isPresent}
-                        onAssign={id => assign(o.id, id)} onDismiss={() => setObservations(prev => prev.filter(x => x.suggestion !== o.suggestion || x.studentId))}/>
+                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.suggestion === o.suggestion)}/>
                     ))}
                   </div>
                 </section>
@@ -305,7 +321,7 @@ function App() {
                   <div className="review-faces">
                     {notRecognised.map(o => (
                       <ReviewFace key={o.id} observation={o} students={students} byId={byId} isPresent={isPresent}
-                        onAssign={id => assign(o.id, id)} onDismiss={() => setObservations(prev => prev.filter(x => x.id !== o.id))}/>
+                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.id === o.id)}/>
                     ))}
                   </div>
                 </details>
@@ -330,6 +346,7 @@ function App() {
         <footer>
           <span>EigenRoll · Face features + PCA / LDA</span>
           <span>Photos are processed on this device · Teacher review recommended</span>
+          {notStudents.length > 0 && <button className="link" onClick={forgetStrangers}>Remembering {notStudents.length} “Not a student” face{notStudents.length === 1 ? '' : 's'} · Forget</button>}
         </footer>
       </main>
     </div>

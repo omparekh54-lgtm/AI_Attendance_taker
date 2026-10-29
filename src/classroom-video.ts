@@ -2,13 +2,15 @@ import {findFaces, describeDetection, type Detection, type ScanProgress} from '.
 import {linkFrame, beginTracking, stitchTracks, type Track} from './tracking';
 import type {DetectedFace} from './attendance';
 
-export const MAX_VIDEO_SECONDS = 60, MAX_VIDEO_FRAMES = 40, FRAMES_PER_TRACK = 3;
+/** FRAMES_PER_TRACK: a person's sharpest frames are each recognised separately and must agree (see FRAME_AGREEMENT). */
+export const MAX_VIDEO_SECONDS = 60, MAX_VIDEO_FRAMES = 40, FRAMES_PER_TRACK = 4;
 const MAX_FRAME_SIDE = 3840;
 
 type Sample = {frame: number; cx: number; cy: number; area: number; usable: boolean; crop: HTMLCanvasElement; detection: Detection; sourceWidth: number; sourceHeight: number};
 
-/** Classroom video → one face per person. Faces are followed across frames by position (with pan compensation),
- *  and each person's features are averaged over their sharpest frames before recognition. */
+/** Classroom video → one face per person. Faces are followed across frames by position (with pan compensation).
+ *  Each person's features are averaged over their sharpest frames, and the frames are also passed on one by one
+ *  so recognition can check that they keep pointing at the same student. */
 export async function scanVideo(file: Blob, onProgress?: ScanProgress): Promise<DetectedFace[]> {
   if (file.size > 300 * 1024 * 1024) throw Error('Choose a video smaller than 300 MB, or record a shorter one.');
   const url = URL.createObjectURL(file), video = document.createElement('video');
@@ -46,7 +48,7 @@ export async function scanVideo(file: Blob, onProgress?: ScanProgress): Promise<
       const withFeatures = described.filter(f => f.usable && f.face.embedding);
       const lead = withFeatures[0] ?? described[0];
       faces.push({...lead, usable: withFeatures.length > 0, face: {...lead.face, embedding: withFeatures.length ? meanEmbedding(withFeatures.map(f => f.face.embedding!)) : undefined},
-        frames: [track.samples[0].frame, track.samples[track.samples.length - 1].frame]});
+        frameEmbeddings: withFeatures.map(f => f.face.embedding!), frames: [track.samples[0].frame, track.samples[track.samples.length - 1].frame]});
     }
     return faces;
   } finally {
