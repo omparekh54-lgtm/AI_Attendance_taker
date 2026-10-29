@@ -1,0 +1,302 @@
+{
+ "dataset": "AT&T / ORL face database (40 people x 10 photos), features from the app pipeline in Chromium",
+ "before": {
+  "registration": {
+   "photo": {
+    "present": 1439,
+    "markedRight": 1431,
+    "markedWrong": 0,
+    "suggestedRight": 8,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 130
+   },
+   "video": {
+    "present": 1439,
+    "markedRight": 1439,
+    "markedWrong": 0,
+    "suggestedRight": 0,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 192
+   },
+   "nextLesson": {
+    "present": 1439,
+    "markedRight": 1431,
+    "markedWrong": 0,
+    "suggestedRight": 8,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 143
+   },
+   "count": {
+    "lessons": 60,
+    "exact": 0,
+    "off1": 0,
+    "error": 1067,
+    "naive": 1067,
+    "over": 60,
+    "under": 0
+   }
+  },
+  "at48": {
+   "photo": {
+    "present": 1458,
+    "markedRight": 1433,
+    "markedWrong": 0,
+    "suggestedRight": 25,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 155
+   },
+   "video": {
+    "present": 1458,
+    "markedRight": 1458,
+    "markedWrong": 0,
+    "suggestedRight": 0,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 189
+   },
+   "nextLesson": {
+    "present": 1458,
+    "markedRight": 1436,
+    "markedWrong": 0,
+    "suggestedRight": 22,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 138
+   },
+   "count": {
+    "lessons": 60,
+    "exact": 0,
+    "off1": 0,
+    "error": 1103,
+    "naive": 1103,
+    "over": 60,
+    "under": 0
+   }
+  },
+  "at36": {
+   "photo": {
+    "present": 1402,
+    "markedRight": 1331,
+    "markedWrong": 0,
+    "suggestedRight": 63,
+    "suggestedWrong": 0,
+    "missed": 8,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 164
+   },
+   "video": {
+    "present": 1402,
+    "markedRight": 1402,
+    "markedWrong": 0,
+    "suggestedRight": 0,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 219
+   },
+   "nextLesson": {
+    "present": 1402,
+    "markedRight": 1349,
+    "markedWrong": 0,
+    "suggestedRight": 45,
+    "suggestedWrong": 0,
+    "missed": 8,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 152
+   },
+   "count": {
+    "lessons": 60,
+    "exact": 0,
+    "off1": 0,
+    "error": 1141,
+    "naive": 1141,
+    "over": 60,
+    "under": 0
+   }
+  }
+ },
+ "after": {
+  "registration": {
+   "photo": {
+    "present": 1439,
+    "markedRight": 1423,
+    "markedWrong": 0,
+    "suggestedRight": 16,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 5
+   },
+   "video": {
+    "present": 1439,
+    "markedRight": 1439,
+    "markedWrong": 0,
+    "suggestedRight": 0,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 0
+   },
+   "nextLesson": {
+    "present": 1439,
+    "markedRight": 1425,
+    "markedWrong": 0,
+    "suggestedRight": 14,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 0
+   },
+   "count": {
+    "lessons": 60,
+    "exact": 46,
+    "off1": 59,
+    "error": 15,
+    "naive": 1070,
+    "over": 14,
+    "under": 0
+   }
+  },
+  "at48": {
+   "photo": {
+    "present": 1458,
+    "markedRight": 1406,
+    "markedWrong": 0,
+    "suggestedRight": 52,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 15
+   },
+   "video": {
+    "present": 1458,
+    "markedRight": 1458,
+    "markedWrong": 0,
+    "suggestedRight": 0,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 1
+   },
+   "nextLesson": {
+    "present": 1458,
+    "markedRight": 1399,
+    "markedWrong": 0,
+    "suggestedRight": 59,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 1
+   },
+   "count": {
+    "lessons": 60,
+    "exact": 54,
+    "off1": 60,
+    "error": 6,
+    "naive": 1149,
+    "over": 6,
+    "under": 0
+   }
+  },
+  "at36": {
+   "photo": {
+    "present": 1402,
+    "markedRight": 1161,
+    "markedWrong": 0,
+    "suggestedRight": 216,
+    "suggestedWrong": 0,
+    "missed": 25,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 10
+   },
+   "video": {
+    "present": 1402,
+    "markedRight": 1280,
+    "markedWrong": 0,
+    "suggestedRight": 122,
+    "suggestedWrong": 0,
+    "missed": 0,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 0
+   },
+   "nextLesson": {
+    "present": 1402,
+    "markedRight": 1208,
+    "markedWrong": 0,
+    "suggestedRight": 175,
+    "suggestedWrong": 0,
+    "missed": 19,
+    "strangers": 720,
+    "strangerMarked": 0,
+    "strangerSuggested": 0
+   },
+   "count": {
+    "lessons": 60,
+    "exact": 48,
+    "off1": 59,
+    "error": 13,
+    "naive": 1394,
+    "over": 12,
+    "under": 0
+   }
+  }
+ },
+ "classPhotos": {
+  "photos": 8,
+  "people": 282,
+  "registered": 186,
+  "unregistered": 96,
+  "facesFound": 262,
+  "foundByFaceWidth": {
+   "110": "48/49",
+   "95": "49/49",
+   "80": "48/49",
+   "66": "46/49",
+   "51": "49/49",
+   "36": "22/37"
+  },
+  "before": {
+   "markedRight": 168,
+   "toConfirm": 2,
+   "wrongStudent": 0,
+   "strangersNamed": 0,
+   "strangersOffered": 9
+  },
+  "after": {
+   "markedRight": 164,
+   "toConfirm": 6,
+   "wrongStudent": 0,
+   "strangersNamed": 0,
+   "strangersOffered": 1,
+   "headCountNetError": -20,
+   "note": "equal to the 20 faces not detected"
+  }
+ }
+}

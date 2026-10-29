@@ -89,7 +89,7 @@ No registered student was ever marked as the wrong student, before or after. The
 The board shows **People in the room** next to Present, Absent and To confirm, with a breakdown underneath (students present · to confirm · not registered · faces too unclear to identify). It combines every photo and video of the lesson:
 
 - Students count once however many photos they are in; students marked present by hand count too.
-- Other faces are linked across captures by face features (closer than 0.45 = same person), so someone in both the left and the right photo, or who leaves a video and comes back, counts once. Two faces in the same photo, or on screen at the same moment of a video, are always two people.
+- Other faces are linked across captures by face features (closer than 0.50 = same person, measured on real faces), so someone in both the left and the right photo, or who leaves a video and comes back, counts once. Two faces in the same photo, or on screen at the same moment of a video, are always two people.
 - **Not a student** hides a face from review but keeps the person in the count; **Not a face** (posters, hands) removes it from the count.
 - Faces too small or blurry to read cannot be told apart across photos, so the count uses the largest number of them in any single capture rather than adding them up.
 
@@ -101,6 +101,29 @@ Open-set benchmark, head-count scenario (two overlapping photos with the middle 
 | Harsh | 98% | 100% | 0.02 people | off by 28 |
 
 These are generated faces in which every person is detected. Real counts also depend on the detector finding everyone (hidden or turned-away people are missed) and not mistaking posters for faces, which a real class recording is needed to measure.
+
+### Tested on real faces
+
+No classroom data was available, so the changes were tested on 400 real photos of 40 people (the AT&T / ORL face database), run through the app's own face finder and identity features in a browser. Photos 1–7 of each person are their registration, 8–10 unseen tests; test faces were also shrunk to 48 px and 36 px wide the way the app sees middle and back rows. 20 random splits, ~30% of the people unregistered. Per cell: students marked automatically / wrong student marked / strangers given a student's name (of 720) / strangers offered as "Is this …?". Scripts: `scripts/real-face-test.ts`, `scripts/real-class-photo-test.ts`.
+
+| Test faces, scenario | Before (main) | After |
+|---|---|---|
+| registration quality, photo | 99% / 0 / 0 / 18% | 99% / 0 / 0 / 1% |
+| registration quality, video | 100% / 0 / 0 / 27% | 100% / 0 / 0 / 0% |
+| registration quality, next lesson | 99% / 0 / 0 / 20% | 99% / 0 / 0 / 0% |
+| registration quality, head count | – (adding up faces: off by 18) | exact 77%, within ±1 98% |
+| 48 px (middle rows), photo | 98% / 0 / 0 / 22% | 96% / 0 / 0 / 2% |
+| 48 px (middle rows), video | 100% / 0 / 0 / 26% | 100% / 0 / 0 / 0% |
+| 48 px (middle rows), next lesson | 98% / 0 / 0 / 19% | 96% / 0 / 0 / 0% |
+| 48 px (middle rows), head count | – (adding up faces: off by 19) | exact 90%, within ±1 100% |
+| 36 px (back rows), photo | 95% / 0 / 0 / 23% | 83% / 0 / 0 / 1% |
+| 36 px (back rows), video | 100% / 0 / 0 / 30% | 91% / 0 / 0 / 0% |
+| 36 px (back rows), next lesson | 96% / 0 / 0 / 21% | 86% / 0 / 0 / 0% |
+| 36 px (back rows), head count | – (adding up faces: off by 23) | exact 80%, within ±1 98% |
+
+**End to end:** 8 composed 12 MP class photos (282 people: 186 registered, 96 unregistered; faces 110 px at the front to 36 px at the back), scanned with the app's classroom scan. Faces found: 262/282 (all rows of 51 px or more: 240/245; 36 px back row: 22/37). Students marked automatically 168 before / 164 after (4 more go to one-tap confirmation), wrong students 0 / 0, strangers given a name 0 / 0, strangers offered as "Is this …?" 9 / 1 of 96. The head count was short by exactly the 20 faces the scan did not find; every person it found was counted correctly.
+
+Limits: these 40 people are more distinct from each other than a class of same-age students, so strangers were not named even by the old code here; the generated look-alike tests above are where that difference shows. The composed photos have faces on a plain backdrop, not in a crowded room.
 
 ## Startup performance
 
