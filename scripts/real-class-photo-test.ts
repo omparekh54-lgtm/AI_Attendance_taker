@@ -10,7 +10,8 @@
 import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
 import {recognizeCapture, type DetectedFace, type Observation} from '../src/attendance';
-import * as counting from '../src/head-count';
+// Older versions have no head count; they are scored on students present plus every other face.
+const counting: {headCount?: typeof import('../src/head-count').headCount} = await import('../src/head-count').catch(() => ({}));
 
 type Person = {id: string; photos: ({embedding: number[]; yaw: number} | null)[]; classroom: number[][]};
 type Seat = {person: string; registered: boolean; box: [number, number, number, number]; faceWidth: number};

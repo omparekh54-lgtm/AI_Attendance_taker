@@ -13,7 +13,8 @@
 import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
 import {recognizeCapture, type DetectedFace, type Observation} from '../src/attendance';
-import * as counting from '../src/head-count';
+// Older versions have no head count; they are scored on students present plus every other face.
+const counting: {headCount?: typeof import('../src/head-count').headCount} = await import('../src/head-count').catch(() => ({}));
 
 type Photo = {embedding: number[]; yaw: number; at48: number[] | null; at36: number[] | null} | null;
 type Person = {id: string; photos: Photo[]; classroom: number[][]};
@@ -46,11 +47,11 @@ function score(t: Tally, truth: (string | null)[], result: Observation[]) {
 }
 function countPeople(result: Observation[]) {
   const present = new Set(result.flatMap(o => (o.studentId ? [o.studentId] : [])));
-  return counting.headCount ? counting.headCount(result, present).total : present.size + result.filter(o => !o.studentId).length;
+  return counting.headCount ? counting.headCount(result, present, Number(process.env.SAME_PERSON ?? 0) || undefined).total : present.size + result.filter(o => !o.studentId).length;
 }
 
-const results: Record<string, {photo: Tally; video: Tally; nextLesson: Tally; count: {lessons: number; exact: number; off1: number; error: number; naive: number}}> = {};
-for (const q of ['registration', 'at48', 'at36'] as Quality[]) results[q] = {photo: tally(), video: tally(), nextLesson: tally(), count: {lessons: 0, exact: 0, off1: 0, error: 0, naive: 0}};
+const results: Record<string, {photo: Tally; video: Tally; nextLesson: Tally; count: {lessons: number; exact: number; off1: number; error: number; naive: number; over: number; under: number}}> = {};
+for (const q of ['registration', 'at48', 'at36'] as Quality[]) results[q] = {photo: tally(), video: tally(), nextLesson: tally(), count: {lessons: 0, exact: 0, off1: 0, error: 0, naive: 0, over: 0, under: 0}};
 
 for (let split = 0; split < SPLITS; split++) {
   const order = shuffle(people), cut = Math.round(order.length * 0.7);
@@ -78,7 +79,7 @@ for (let split = 0; split < SPLITS; split++) {
       all.push(...recognise(model, tracks.map(t => { const f = shuffle(views(t.x.p, q, t.x.reg)).slice(0, 4); return face(mean(f), {frameEmbeddings: f, frames: t.frames}); })).map(o => ({...o, capture: 3})));
       const counted = countPeople(all), naive = new Set(all.flatMap(o => (o.studentId ? [o.studentId] : []))).size + all.filter(o => !o.studentId).length;
       r.count.lessons++; if (counted === room.length) r.count.exact++; if (Math.abs(counted - room.length) <= 1) r.count.off1++;
-      r.count.error += Math.abs(counted - room.length); r.count.naive += Math.abs(naive - room.length);
+      r.count.error += Math.abs(counted - room.length); if (counted > room.length) r.count.over++; if (counted < room.length) r.count.under++; r.count.naive += Math.abs(naive - room.length);
     }
   }
 }
@@ -94,6 +95,6 @@ else {
       console.log(`  ${name.padEnd(10)} marked right ${pct(t.markedRight, t.present).padStart(6)} | to confirm ${pct(t.suggestedRight, t.present).padStart(6)} | WRONG student ${String(t.markedWrong).padStart(3)} | strangers named ${t.strangerMarked}/${t.strangers} | strangers offered ${pct(t.strangerSuggested, t.strangers)}`);
     }
     const c = r.count;
-    console.log(`  head count exact ${pct(c.exact, c.lessons)}, within ±1 ${pct(c.off1, c.lessons)}, avg error ${(c.error / c.lessons).toFixed(2)} (adding up faces: ${(c.naive / c.lessons).toFixed(1)})\n`);
+    console.log(`  head count exact ${pct(c.exact, c.lessons)}, within ±1 ${pct(c.off1, c.lessons)}, avg error ${(c.error / c.lessons).toFixed(2)}, too many ${c.over}, too few ${c.under} (adding up faces: ${(c.naive / c.lessons).toFixed(1)})\n`);
   }
 }

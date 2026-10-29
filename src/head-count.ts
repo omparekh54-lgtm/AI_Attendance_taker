@@ -8,10 +8,11 @@ import type {Observation} from './attendance';
  *  across photos, so adding them up would count the same blurry face once per photo). */
 export type HeadCount = {total: number; students: number; toConfirm: number; unregistered: number; unclear: number};
 
-/** Two faces from different captures closer than this are taken to be the same person. Same-person distances in
- *  classroom photos are mostly 0.3–0.45. In the open-set benchmark 0.45 counted the room exactly in 94–98% of lessons
- *  (never off by more than one); 0.48 scored slightly higher but is about the distance between two look-alikes. */
-export const SAME_PERSON_DISTANCE = 0.45;
+/** Two faces from different captures closer than this are taken to be the same person. Measured on 400 real photos of
+ *  40 people (the app's own pipeline): 90–95% of same-person pairs are under 0.45–0.51 and only 0.1% of different-person
+ *  pairs under 0.47–0.51. 0.45 left the same person counted twice too often (exact 45–65%); 0.50 counted the room
+ *  exactly in 77–90% of lessons, within ±1 in 98–100%, and never too few (also on generated classes with look-alikes). */
+export const SAME_PERSON_DISTANCE = 0.5;
 
 const distance = (a: number[], b: number[]) => Math.sqrt(a.reduce((n, v, i) => n + (v - b[i]) ** 2, 0));
 
