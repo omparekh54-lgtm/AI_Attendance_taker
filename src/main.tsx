@@ -9,7 +9,7 @@ import {Home} from './home';
 import {CameraCapture} from './camera';
 import {config} from './config';
 import {load, loadAttendance, save, initial, csv, download, type State, type Student} from './store';
-import {recognizeCapture, recheckAgainstStranger, rosterSignature, type DetectedFace, type Observation} from './attendance';
+import {agreeAcrossCaptures, recognizeCapture, recheckAgainstStranger, rosterSignature, type DetectedFace, type Observation} from './attendance';
 import {loadNotStudents, rememberNotStudents, forgetNotStudents} from './not-students';
 import {headCount} from './head-count';
 import {loadSavedAttendance, saveAttendance, clearSavedAttendance, type SavedAttendance} from './saved-attendance';
@@ -146,7 +146,7 @@ function App() {
     if (!active) throw Error('Recognition is not ready. Prepare the model first.');
     const capture = ++captureCounter.current;
     const batch = recognizeCapture(active, faces, notStudents).map(o => ({...o, capture}));
-    setObservations(prev => [...prev, ...batch].slice(-1000));
+    setObservations(prev => agreeAcrossCaptures([...prev, ...batch].slice(-1000)));
     setCaptures(n => n + 1);
     if (!startedAt) setStartedAt(new Date().toISOString());
     const matched = new Set(batch.flatMap(o => (o.studentId ? [o.studentId] : []))).size,
@@ -206,7 +206,7 @@ function App() {
   const toConfirm = [...bestFace.values()].sort((a, b) => seenIn.get(b.suggestion!)!.size - seenIn.get(a.suggestion!)!.size || (a.distance ?? 1) - (b.distance ?? 1));
   const notRecognised = unresolved.filter(o => !o.suggestion);
   const hiddenRepeats = observations.filter(o => !o.studentId && alreadyCounted(o)).length + unresolved.filter(o => o.suggestion && bestFace.get(o.suggestion) !== o).length;
-  const howMarked = (s: Student) => (manual[s.id] === true ? 'Marked by teacher' : observations.some(o => o.studentId === s.id && o.confirmed) ? 'Confirmed by teacher' : 'Recognised from photo');
+  const howMarked = (s: Student) => (manual[s.id] === true ? 'Marked by teacher' : observations.some(o => o.studentId === s.id && o.confirmed) ? 'Confirmed by teacher' : observations.some(o => o.studentId === s.id && !o.agreed) ? 'Recognised from photo' : 'Matched in two photos');
   const searchMatch = (s: Student) => (s.name + ' ' + s.roll).toLowerCase().includes(search.toLowerCase());
 
   function exportCsv() {

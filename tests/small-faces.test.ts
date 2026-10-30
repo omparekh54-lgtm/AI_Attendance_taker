@@ -36,3 +36,29 @@ test('No face is ever accepted past the student’s classmate cap, however small
 test('Without camera support for still photos, the live video frame is used',async()=>{
  assert.equal(await fullResolutionStill(null,1920,1080),undefined);
 });
+
+import {agreeAcrossCaptures,SMALL_FACE_REASON} from '../src/attendance';
+const one=(x:number)=>Array.from({length:128},(_,i)=>i===0?x:0);
+const smallFace=(id:string,capture:number,e:number[],px=28)=>({id,image:'',capture,embedding:e,facePx:px,suggestion:'ana',reason:SMALL_FACE_REASON,distance:.4});
+test('a small face that passed every check in two separate photos is marked',()=>{
+ const out=agreeAcrossCaptures([smallFace('a',1,one(0)),smallFace('b',2,one(.1))]);
+ assert.equal(out.filter(o=>o.studentId==='ana').length,1);
+ assert.equal(out.find(o=>o.studentId)?.agreed,true);
+});
+test('not marked from one photo, from two faces in one photo, or from two different people',()=>{
+ assert.ok(!agreeAcrossCaptures([smallFace('a',1,one(0))]).some(o=>o.studentId));
+ assert.ok(!agreeAcrossCaptures([smallFace('a',1,one(0)),smallFace('b',1,one(.1))]).some(o=>o.studentId));
+ assert.ok(!agreeAcrossCaptures([smallFace('a',1,one(0)),smallFace('b',2,one(.9))]).some(o=>o.studentId));
+});
+test('tiny faces, plain suggestions and faces marked "Not a student" are never marked by agreement',()=>{
+ assert.ok(!agreeAcrossCaptures([smallFace('a',1,one(0),20),smallFace('b',2,one(.1),20)]).some(o=>o.studentId));
+ assert.ok(!agreeAcrossCaptures([{...smallFace('a',1,one(0)),reason:'Please confirm'},{...smallFace('b',2,one(.1)),reason:'Please confirm'}]).some(o=>o.studentId));
+ assert.ok(!agreeAcrossCaptures([{...smallFace('a',1,one(0)),notStudent:true},smallFace('b',2,one(.1))]).some(o=>o.studentId));
+});
+test('back-row zoom steps follow what the camera supports',async()=>{
+ const {zoomSteps}=await import('../src/camera-zoom');
+ assert.deepEqual(zoomSteps(undefined),[]);
+ assert.deepEqual(zoomSteps({min:1,max:1}),[]);
+ assert.deepEqual(zoomSteps({min:1,max:10}),[1,2,3]);
+ assert.deepEqual(zoomSteps({min:1,max:2.5}),[1,2,2.5]);
+});

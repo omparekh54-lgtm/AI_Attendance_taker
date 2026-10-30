@@ -8,7 +8,11 @@
  */
 import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
-import {predictIdentity} from '../src/identity';
+import * as identity from '../src/identity';
+const {predictIdentity} = identity;
+// NO_NORM=1: without per-student score normalisation (to compare with the previous behaviour).
+const tune = identity as unknown as {SCORE_NORM_CONFIG?: {on: boolean}};
+if (tune.SCORE_NORM_CONFIG && process.env.NO_NORM) tune.SCORE_NORM_CONFIG.on = false;
 import {recognizeCapture, type DetectedFace} from '../src/attendance';
 import type {Student} from '../src/store';
 

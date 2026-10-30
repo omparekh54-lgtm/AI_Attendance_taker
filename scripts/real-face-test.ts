@@ -12,6 +12,10 @@
  */
 import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
+import * as identityRules from '../src/identity';
+// NO_NORM=1: without per-student score normalisation (to compare with the previous behaviour).
+const normTune = identityRules as unknown as {SCORE_NORM_CONFIG?: {on: boolean}};
+if (normTune.SCORE_NORM_CONFIG && process.env.NO_NORM) normTune.SCORE_NORM_CONFIG.on = false;
 import {recognizeCapture, type DetectedFace, type Observation} from '../src/attendance';
 // Older versions have no head count; they are scored on students present plus every other face.
 const counting: {headCount?: typeof import('../src/head-count').headCount} = await import('../src/head-count').catch(() => ({}));

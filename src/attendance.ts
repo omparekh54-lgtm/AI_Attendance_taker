@@ -8,8 +8,9 @@ export type DetectedFace={sourceWidth?:number;sourceHeight?:number;face:Face;usa
 /** studentId: confidently recognised. suggestion: likely student the teacher can confirm with one tap. candidates: closest students, best first.
  *  embedding: face features, so "Not a student" can remember a face and the head count can recognise one person across photos.
  *  notStudent: the teacher said this is not a student; it stays in the head count but leaves the review list. */
-export type Observation={id:string;image:string;frames?:[number,number];studentId?:string;suggestion?:string;candidates?:string[];reason?:string;distance?:number;confirmed?:boolean;capture?:number;embedding?:number[];notStudent?:boolean};
+export type Observation={id:string;image:string;frames?:[number,number];studentId?:string;suggestion?:string;candidates?:string[];reason?:string;distance?:number;confirmed?:boolean;capture?:number;embedding?:number[];notStudent?:boolean;facePx?:number;agreed?:boolean};
 const SMALL_SOURCE=240, DUPLICATE_GAP=.05;
+export const SMALL_FACE_REASON='Small face — please confirm';
 /** Video: share of a person's frames that must point to the same student before they are marked. Strangers tend to
  *  resemble different students in different frames, while a real student stays the same student. */
 export const FRAME_AGREEMENT=2/3;
@@ -40,7 +41,7 @@ export function recognizeCapture(model:Model, faces:DetectedFace[], strangers:nu
     return {id,image,suggestion:mostly?p.label:undefined,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:mostly?'Please confirm':'Changed between video frames'};
    }
    // Very small faces are never marked on their own: the teacher confirms them with one tap.
-   if(p.accepted&&facePx<AUTO_MARK_MIN_FACE_PX)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:'Small face — please confirm'};
+   if(p.accepted&&facePx<AUTO_MARK_MIN_FACE_PX)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,facePx,reason:SMALL_FACE_REASON};
    // Turned and side-view faces are confirmed by the teacher: they are where look-alikes get mixed up.
    if(p.accepted&&Math.abs(f.face.yaw??0)>=TURNED_FACE_YAW)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:'Turned face — please confirm'};
    if(p.accepted)return {id,image,studentId:p.label,distance:p.distance,candidates:p.candidates,frames:f.frames,embedding};
@@ -69,5 +70,23 @@ export function recheckAgainstStranger(observations:Observation[], stranger:numb
  const d=(a:number[],b:number[])=>Math.sqrt(a.reduce((n,v,i)=>n+(v-b[i])**2,0));
  return observations.map(o=>o.studentId&&!o.confirmed&&o.embedding&&o.distance!==undefined&&d(o.embedding,stranger)<=o.distance+STRANGER_GAP
   ?{...o,studentId:undefined,suggestion:undefined,reason:'Looks like someone marked “Not a student”'}:o);
+}
+/** Small faces in two separate photos. A face under AUTO_MARK_MIN_FACE_PX that passed every check except its size is
+ *  only offered for confirmation. If another photo has a face that also passed every check for the SAME student, is at
+ *  least AGREE_MIN_FACE_PX wide, and is the same person (SAME_PERSON_DISTANCE apart), the student is marked.
+ *  On real faces (AT&T, 26 px, 20 splits): 12% of students' photo pairs marked automatically (0% before), 0 wrong
+ *  students and 0 of 3,600 stranger pairs; the looser rule (any two suggestions) named 5-7 strangers, so it is not used. */
+export const AGREE_MIN_FACE_PX=24, AGREE_SAME_PERSON=.5;
+export function agreeAcrossCaptures(observations:Observation[]):Observation[]{
+ const d=(a:number[],b:number[])=>Math.sqrt(a.reduce((n,v,i)=>n+(v-b[i])**2,0));
+ const present=new Set(observations.flatMap(o=>o.studentId?[o.studentId]:[]));
+ const promote=new Map<string,Observation>();
+ const small=observations.filter(o=>!o.studentId&&!o.notStudent&&o.reason===SMALL_FACE_REASON&&o.suggestion&&o.embedding&&(o.facePx??0)>=AGREE_MIN_FACE_PX&&!present.has(o.suggestion));
+ for(const student of new Set(small.map(o=>o.suggestion!))){
+  const faces=small.filter(o=>o.suggestion===student).sort((a,b)=>(a.distance??1)-(b.distance??1));
+  const pair=faces.flatMap((a,i)=>faces.slice(i+1).flatMap(b=>(a.capture??0)!==(b.capture??0)&&d(a.embedding!,b.embedding!)<=AGREE_SAME_PERSON?[a]:[]))[0];
+  if(pair)promote.set(pair.id,{...pair,studentId:student,suggestion:undefined,agreed:true,reason:'Matched in two photos'});
+ }
+ return promote.size?observations.map(o=>promote.get(o.id)??o):observations;
 }
 export function rosterSignature(students:{id:string;faces:Face[]}[]){return students.map(s=>s.id+':'+s.faces.length).sort().join('|');}

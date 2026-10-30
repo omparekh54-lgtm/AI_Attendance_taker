@@ -10,6 +10,10 @@
  */
 import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
+import * as identityRules from '../src/identity';
+// NO_NORM=1: without per-student score normalisation (to compare with the previous behaviour).
+const normTune = identityRules as unknown as {SCORE_NORM_CONFIG?: {on: boolean}};
+if (normTune.SCORE_NORM_CONFIG && process.env.NO_NORM) normTune.SCORE_NORM_CONFIG.on = false;
 import * as identity from '../src/identity';
 const {predictIdentity} = identity;
 // Tuning only (newer code): SMALL_EXTRA, SMALL_TO, MAX_CAP, CEILING override the small-face settings.

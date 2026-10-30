@@ -5,9 +5,9 @@ export const IDENTITY_EXTRACTOR='faceapi-1.7.15-landmarks-v1';
 export const IDENTITY_RULES=3;
 /** limits: per-student distance limit for a clear face. caps: the most any face may be from this student, set by how
  *  close their classmates come (small faces are allowed past `limits`, never past `caps`). */
-export type IdentityModel={extractor:string;rules?:number;templates:Sample[];limits:Record<string,number>;caps?:Record<string,number>;pcaLda:Model;maxRatio:number;minMargin:number;neighbors:number};
+export type IdentityModel={extractor:string;rules?:number;templates:Sample[];limits:Record<string,number>;caps?:Record<string,number>;norm?:Record<string,[number,number]>;pcaLda:Model;maxRatio:number;minMargin:number;neighbors:number};
 const distance=(a:number[],b:number[])=>Math.sqrt(a.reduce((n,v,i)=>n+(v-b[i])**2,0));
-function score(v:number[],templates:Sample[],exclude=-1,neighbors=3){const byLabel=new Map<string,number[]>();templates.forEach((s,i)=>{if(i===exclude)return;const a=byLabel.get(s.label)??[];a.push(distance(v,s.vector));byLabel.set(s.label,a)});return [...byLabel].map(([label,distances])=>{distances.sort((a,b)=>a-b);const nearest=distances.slice(0,Math.min(neighbors,distances.length));return {label,distance:nearest.reduce((a,b)=>a+b,0)/nearest.length}}).sort((a,b)=>a.distance-b.distance)}
+function score(v:number[],templates:Sample[],exclude=-1,neighbors=3,norm?:Record<string,[number,number]>){const byLabel=new Map<string,number[]>();templates.forEach((s,i)=>{if(i===exclude)return;const a=byLabel.get(s.label)??[];a.push(distance(v,s.vector));byLabel.set(s.label,a)});return [...byLabel].map(([label,distances])=>{distances.sort((a,b)=>a-b);const nearest=distances.slice(0,Math.min(neighbors,distances.length));const distance=nearest.reduce((a,b)=>a+b,0)/nearest.length,n=norm?.[label];return {label,distance,z:n?(distance-n[0])/n[1]:distance}}).sort((a,b)=>a.z-b.z)}
 /** `classroom`: extra gallery entries describing students as they appear in class photos (small, far away),
  *  computed from their own enrolment photos. They join the gallery and PCA/LDA but not the distance calibration. */
 export const GALLERY_PER_STUDENT=8;
@@ -28,8 +28,24 @@ export function diverse(vectors:number[][],k:number):number[]{
  }
  return chosen;
 }
+/** Registration photos that do not look like the rest of the student's photos (blurred, turned, badly cropped, someone
+ *  else in frame). Kept as gallery templates they resemble everyone a little, so one student "wins" many faces in a class
+ *  photo. A photo is an outlier when it is further from the student's average than both `minRadius` and the student's
+ *  typical spread (median + `mads` robust deviations). At least `keep` of the closest photos always stay. */
+export const SCORE_NORM_CONFIG={on:false};
+const SCORE_NORM_ON=()=>SCORE_NORM_CONFIG.on;
+export const GALLERY_INLIER={minRadius:0,mads:3,keep:.6};
+export function inlierIndices(vectors:number[][]):number[]{
+ if(vectors.length<4||!GALLERY_INLIER.minRadius)return vectors.map((_,i)=>i);
+ const centroid=vectors[0].map((_,d)=>vectors.reduce((n,v)=>n+v[d],0)/vectors.length);
+ const d=vectors.map(v=>distance(v,centroid)),sorted=[...d].sort((a,b)=>a-b),median=sorted[Math.floor(sorted.length/2)];
+ const mad=[...d.map(x=>Math.abs(x-median))].sort((a,b)=>a-b)[Math.floor(d.length/2)]*1.4826;
+ const radius=Math.max(GALLERY_INLIER.minRadius,median+GALLERY_INLIER.mads*mad),floor=sorted[Math.ceil(vectors.length*GALLERY_INLIER.keep)-1];
+ return d.flatMap((x,i)=>x<=Math.max(radius,floor)?[i]:[]);
+}
 export function trainIdentity(samples:Sample[],classroom:Sample[]=[]):IdentityModel{
  if([...samples,...classroom].some(s=>s.vector.length!==128||s.vector.some(v=>!Number.isFinite(v)||Math.abs(v)>5)))throw Error('Invalid identity descriptors.');
+ samples=[...new Set(samples.map(s=>s.label))].flatMap(label=>{const own=samples.filter(s=>s.label===label);return inlierIndices(own.map(s=>s.vector)).map(i=>own[i])});
  const known=new Set(samples.map(s=>s.label));classroom=classroom.filter(s=>known.has(s.label));
  const pcaLda=train([...samples,...classroom],{components:32}),selected:number[]=[];
  // Keep a small, diverse gallery per student so a class model fits serverless payload limits.
@@ -47,6 +63,11 @@ export function trainIdentity(samples:Sample[],classroom:Sample[]=[]):IdentityMo
  for(const s of [...samples,...classroom]){
   for(const r of score(s.vector,gallery,-1,2))if(r.label!==s.label){const a=impostor.get(r.label)??[];a.push(r.distance);impostor.set(r.label,a)}
  }
+ const norm:Record<string,[number,number]>={};
+ for(const label of Object.keys(pcaLda.limits)){
+  const o=impostor.get(label)??[];
+  if(o.length>=10){const m=o.reduce((a,b)=>a+b,0)/o.length;norm[label]=[m,Math.max(.02,Math.sqrt(o.reduce((a,b)=>a+(b-m)**2,0)/o.length))]}
+ }
  for(const label of Object.keys(pcaLda.limits)){
   // Own photos: generous enough for the student's normal variation (95th percentile, leave-one-out).
   const positives=samples.flatMap((s,i)=>s.label===label?[score(s.vector,templates,selected.indexOf(i),2).find(r=>r.label===label)!.distance]:[]).sort((a,b)=>a-b);
@@ -57,7 +78,7 @@ export function trainIdentity(samples:Sample[],classroom:Sample[]=[]):IdentityMo
   caps[label]=Math.max(IMPOSTOR.floor,Math.min(IMPOSTOR.maxCap,closestOthers));
   limits[label]=Math.max(IMPOSTOR.floor,Math.min(IMPOSTOR.ceiling,own,caps[label]));
  }
- return {extractor:IDENTITY_EXTRACTOR,rules:IDENTITY_RULES,templates:gallery,limits,caps,pcaLda,maxRatio:.85,minMargin:.07,neighbors:2};
+ return {extractor:IDENTITY_EXTRACTOR,rules:IDENTITY_RULES,templates:gallery,limits,caps,...(SCORE_NORM_ON()&&Object.keys(norm).length===Object.keys(limits).length?{norm}:{}),pcaLda,maxRatio:.85,minMargin:.07,neighbors:2};
 }
 /** Extra distance allowed for a small face (px = face width in the photo). A small face is blurrier, so even the right
  *  student is further away (real faces: typically 0.38 at 32 px, 0.47 at 24 px), while different people stay about
@@ -71,7 +92,7 @@ export function smallFaceAllowance(px:number){
  *  `facePx`: width of the face in the photo (omit for a clear, close-up face). */
 export function predictIdentity(model:IdentityModel,vector:number[],strangers:number[][]=[],facePx=Infinity){
  if(vector.length!==128||vector.some(v=>!Number.isFinite(v)||Math.abs(v)>5))throw Error('Invalid face descriptor.');
- const scores=score(vector,model.templates,-1,model.neighbors??3),best=scores[0],runnerUp=scores[1];if(!best||!runnerUp)throw Error('At least two trained identities are required.');
+ const scores=score(vector,model.templates,-1,model.neighbors??3,model.norm),best=scores[0],runnerUp=scores[1];if(!best||!runnerUp)throw Error('At least two trained identities are required.');
  const ratio=best.distance/Math.max(runnerUp.distance,1e-9),margin=runnerUp.distance-best.distance;
  const discriminant=predict(model.pcaLda,vector);
  const pcaAgreement=discriminant.label===best.label;

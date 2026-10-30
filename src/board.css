@@ -146,3 +146,4 @@ body{background:#f5f7f3}.board-app{min-height:100vh}.board-header{height:auto;mi
 .people-breakdown{margin:-8px 0 20px;color:#56654e;font-size:15px;line-height:1.6}
 .review-links{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 @media(max-width:760px){.board-counts{grid-template-columns:repeat(2,1fr)}}
+.camera-zoom{position:absolute;top:14px;left:14px;z-index:3;display:flex;align-items:center;gap:6px;background:#ffffffec;color:#173d2a;border:1px solid #dbe5da;border-radius:999px;padding:5px 8px;box-shadow:0 5px 18px #0003}.camera-zoom button{min-height:40px!important;min-width:44px;padding:4px 10px!important;border-radius:999px!important;font-size:14px!important;font-weight:700;background:transparent!important;border:0!important;color:#173d2a!important}.camera-zoom button[aria-pressed=true]{background:#173d2a!important;color:#fff!important}

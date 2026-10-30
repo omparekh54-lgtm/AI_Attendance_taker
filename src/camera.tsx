@@ -1,6 +1,7 @@
 import {fullResolutionStill} from './still-photo';
+import {zoomSteps} from './camera-zoom';
 import {useEffect, useRef, useState} from 'react';
-import {Camera, RefreshCw, Square, Upload, Video, X} from 'lucide-react';
+import {Camera, RefreshCw, Square, Upload, Video, X, ZoomIn} from 'lucide-react';
 import type {DetectedFace} from './attendance';
 
 type FacingMode = 'user' | 'environment';
@@ -33,7 +34,9 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
     [device, setDevice] = useState(''),
     [facing, setFacing] = useState<FacingMode>(phone || onPhone() ? 'environment' : 'user'),
     [progress, setProgress] = useState<{fraction: number; stage: string} | null>(null),
-    [recording, setRecording] = useState<number | null>(null);
+    [recording, setRecording] = useState<number | null>(null),
+    [zooms, setZooms] = useState<number[]>([]),
+    [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     mounted.current = true;
@@ -50,7 +53,10 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
   async function attach(media: MediaStream, nextFacing: FacingMode) {
     if (!mounted.current) { media.getTracks().forEach(t => t.stop()); return; }
     stream.current = media;
-    const settings = media.getVideoTracks()[0].getSettings();
+    const track = media.getVideoTracks()[0], settings = track.getSettings();
+    // Optical/digital zoom (Chrome on most Android phones): offered for a closer photo of the back rows.
+    const range = (track.getCapabilities?.() as MediaTrackCapabilities & {zoom?: {min: number; max: number}} | undefined)?.zoom;
+    setZooms(zoomSteps(range)); setZoom((settings as MediaTrackSettings & {zoom?: number}).zoom ?? 1);
     const available = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
     const currentId = settings.deviceId ?? '', currentInfo = available.find(d => d.deviceId === currentId);
     setDevices(available); setDevice(currentId);
@@ -102,6 +108,13 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
     } finally {
       if (mounted.current) setBusy(false);
     }
+  }
+
+  async function applyZoom(z: number) {
+    const track = stream.current?.getVideoTracks()[0];
+    if (!track) return;
+    try { await track.applyConstraints({advanced: [{zoom: z} as MediaTrackConstraintSet]}); setZoom(z); }
+    catch { setError('This camera cannot zoom from the browser. Walk closer to the back rows and take a second photo instead.'); }
   }
 
   const onProgress = (fraction: number, stage: string) => { if (mounted.current) setProgress({fraction, stage}); };
@@ -169,6 +182,12 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
               <button type="button" className="camera-flip" aria-label="Switch front and back camera" title="Switch camera" disabled={busy || disabled} onClick={rotateCamera}><RefreshCw size={24}/></button>
             )}
             {isRecording && <span className="recording-badge" role="status">● Recording {recording}s / {MAX_RECORDING_SECONDS}s · move slowly across the class</span>}
+            {zooms.length > 0 && !isRecording && (
+              <div className="camera-zoom" role="group" aria-label="Zoom for back rows">
+                <ZoomIn size={16} aria-hidden="true"/>
+                {zooms.map(z => <button type="button" key={z} aria-pressed={Math.abs(zoom - z) < .05} disabled={busy || disabled} onClick={() => applyZoom(z)}>{z}×</button>)}
+              </div>
+            )}
             <span className="camera-label"><strong>{facing === 'environment' ? 'Back camera' : 'Front camera'}</strong> · Point the camera towards the students</span>
           </div>
           <div className="actions camera-actions">
@@ -219,7 +238,7 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
           }
         }}/>
       </label>
-      <p className="muted">Big class? Take 2–3 photos (left, middle, right) or record one slow 10-second video across the room. Every photo and video is combined, and nobody is counted twice.</p>
+      <p className="muted">Big class? Take one photo of the whole class, then {zooms.length ? <>zoom to <strong>{zooms[zooms.length - 1]}×</strong> and</> : <>walk closer and</>} take a second photo of the back rows. Back-row faces need to be bigger to be marked. Every photo and video is combined, and nobody is counted twice; a back-row face seen in two photos can be marked even when it is small.</p>
     </div>
   );
 }
