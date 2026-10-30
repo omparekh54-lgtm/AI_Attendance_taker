@@ -10,14 +10,22 @@
  */
 import {readFileSync} from 'node:fs';
 import {buildModel} from '../src/build-model';
-import {predictIdentity} from '../src/identity';
+import * as identity from '../src/identity';
+const {predictIdentity} = identity;
+// Tuning only (newer code): SMALL_EXTRA, SMALL_TO, MAX_CAP, CEILING override the small-face settings.
+const tune = identity as unknown as {SMALL_FACE?: {from: number; to: number; extra: number}; IMPOSTOR?: {maxCap: number; ceiling: number}};
+if (tune.SMALL_FACE && process.env.SMALL_EXTRA) tune.SMALL_FACE.extra = Number(process.env.SMALL_EXTRA);
+if (tune.SMALL_FACE && process.env.SMALL_TO) tune.SMALL_FACE.to = Number(process.env.SMALL_TO);
+if (tune.IMPOSTOR && process.env.MAX_CAP) tune.IMPOSTOR.maxCap = Number(process.env.MAX_CAP);
+if (tune.IMPOSTOR && process.env.CEILING) tune.IMPOSTOR.ceiling = Number(process.env.CEILING);
 import {recognizeCapture, type DetectedFace} from '../src/attendance';
 
 type Person = {id: string; photos: ({embedding: number[]; yaw: number} | null)[]; classroom: number[][]};
 type Small = {id: string; sizes: Record<string, (number[] | null)[]>};
 const args = process.argv.slice(2), files = args.filter(a => !a.startsWith('--'));
-const people = (JSON.parse(readFileSync(files[0], 'utf8')) as Person[]);
 const small = new Map((JSON.parse(readFileSync(files[1], 'utf8')) as Small[]).map(s => [s.id, s]));
+// Only people whose small faces have been computed (the file can be read while it is still being filled).
+const people = (JSON.parse(readFileSync(files[0], 'utf8')) as Person[]).filter(p => small.has(p.id));
 const SPLITS = 20, sizes = Object.keys([...small.values()][0].sizes).sort((a, b) => Number(b) - Number(a));
 
 function rng(seed: number) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

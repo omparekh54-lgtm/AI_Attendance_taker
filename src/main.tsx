@@ -157,7 +157,7 @@ function App() {
       `${matched} recognised`,
       confirm ? `${confirm} to confirm with one tap` : '',
       review ? `${review} not recognised (usually unregistered)` : '',
-    ].filter(Boolean).join(' · ') + '.');
+    ].filter(Boolean).join(' · ') + '.' + (kind === 'photo' && lowResolutionPhoto(faces) ? ' ' + LOW_RES_TIP : ''));
   }
   function startNew() {
     if ((captures || Object.keys(manual).length) && !confirm('Start new attendance? The current results on this screen will be cleared.')) return;
@@ -414,6 +414,13 @@ function StudentRow({student, detail, action, onClick}: {student: Student; detai
       <button onClick={onClick} aria-label={`${action}: ${student.name}`}>{action}</button>
     </div>
   );
+}
+
+/** Low-resolution photo (a WhatsApp copy, a screenshot): faces are small and blurry, so many cannot be read. */
+const LOW_RES_TIP = 'This photo is low resolution, so back-row faces are tiny. For better results use this app\u2019s camera on a phone (it takes a full-resolution photo), upload the original photo rather than a WhatsApp copy, or add a second photo closer to the back rows.';
+function lowResolutionPhoto(faces: DetectedFace[]) {
+  const f = faces.find(x => x.sourceWidth && x.sourceHeight);
+  return !!f && Math.min(f.sourceWidth!, f.sourceHeight!) < 1600;
 }
 
 const params = new URLSearchParams(location.search);

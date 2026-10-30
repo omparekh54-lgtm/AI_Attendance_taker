@@ -1,3 +1,4 @@
+import {fullResolutionStill} from './still-photo';
 import {useEffect, useRef, useState} from 'react';
 import {Camera, RefreshCw, Square, Upload, Video, X} from 'lucide-react';
 import type {DetectedFace} from './attendance';
@@ -178,7 +179,10 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
                 <button className="primary camera-shutter" disabled={busy || disabled} onClick={() => process('photo', async () => {
                   if (!video.current?.videoWidth) throw Error('Camera is still starting. Try again in a moment.');
                   const {detect} = await import('./vision');
-                  return detect(video.current, {group: true, onProgress});
+                  // A real still photo (often 12 MP on a phone) when the browser supports it: faces come out 2–3×
+                  // bigger than in a frame of the live video. Falls back to the video frame otherwise.
+                  const still = await fullResolutionStill(stream.current, video.current.videoWidth, video.current.videoHeight);
+                  return detect(still ?? video.current, {group: true, onProgress});
                 })}><Camera size={21}/>{progress ? 'Scanning…' : 'Take attendance photo'}</button>
                 <button disabled={busy || disabled} onClick={startRecording}><Video size={19}/>Record video</button>
               </>
@@ -219,3 +223,4 @@ export function CameraCapture({onCapture, disabled = false, phone = false}: {
     </div>
   );
 }
+
