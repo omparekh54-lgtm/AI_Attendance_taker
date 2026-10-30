@@ -9,13 +9,18 @@ export function tileGrid(w:number,h:number,size:number){
  const starts=(length:number)=>{if(length<=size)return [0];const n=Math.ceil((length-size)/(size*.75))+1;return Array.from({length:n},(_,i)=>Math.round(i*(length-size)/(n-1)))};
  return starts(w).flatMap(x=>starts(h).map(y=>({x,y,w:Math.min(size,w),h:Math.min(size,h)})));
 }
-/** Tile sizes so a back-row face is still large enough for the detector's 512 px input. */
-export function groupTileSizes(w:number,h:number){
+/** Tile sizes so a back-row face is still large enough for the detector's 512 px input.
+ *  `lowRes`: a low-resolution class photo (a WhatsApp copy, a screenshot, a 1–2 MP camera). Its faces are often only
+ *  16–30 px, so it also gets small tiles that the detector enlarges 2–3×. Video frames keep the usual scan (speed). */
+export function groupTileSizes(w:number,h:number,lowRes=false){
  const sizes:number[]=[],short=Math.min(w,h);
  // A third, finer scale for phone photos (12 MP+), so 35–45 px back-row faces are big enough for the detector.
  for(const size of [Math.round(short/1.5),Math.round(short/2.5),...(short>=2400?[Math.round(short/4)]:[])])if(size>=480&&!sizes.includes(size))sizes.push(size);
+ if(lowRes&&short<LOW_RES_SHORT_SIDE)for(const size of [Math.round(short/2),Math.round(short/3),Math.round(short/4)])if(size>=MIN_LOW_RES_TILE&&!sizes.includes(size))sizes.push(size);
  return sizes;
 }
+/** Photos whose shorter side is below this get the extra small tiles; smallest such tile (px). */
+export const LOW_RES_SHORT_SIDE=1600, MIN_LOW_RES_TILE=200;
 
 /** Face-box sizes (px, as drawn by the detector) for classroom scans. Measured on the 26 real students' unseen photos:
  *  recognition stays 89–97% down to ~22 px boxes with no wrong students, but 1 of 416 unregistered look-alike tests

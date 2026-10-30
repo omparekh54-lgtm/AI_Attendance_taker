@@ -32,7 +32,7 @@ export function toFrame(source: Source) {
 }
 
 /** Step 1: find faces. `group` adds the classroom detector over the whole frame and overlapping tiles. */
-export async function findFaces(frame: HTMLCanvasElement, options: {group?: boolean; onProgress?: ScanProgress; progressShare?: number} = {}): Promise<Detection[]> {
+export async function findFaces(frame: HTMLCanvasElement, options: {group?: boolean; lowRes?: boolean; onProgress?: ScanProgress; progressShare?: number} = {}): Promise<Detection[]> {
   const model = await ready();
   const w = frame.width, h = frame.height;
   const detections: Detection[] = model.detect(frame).detections.map(d => ({...d, boundingBox: {...d.boundingBox!}}));
@@ -52,7 +52,7 @@ export async function findFaces(frame: HTMLCanvasElement, options: {group?: bool
   }
   // Classroom photos: the selfie-range BlazeFace model above cannot see small, distant faces.
   // Dark classrooms: look for faces in a brightened copy; identity features still come from the original photo.
-  if (options.group) detections.push(...await groupDetections(brightened(frame), options.onProgress, options.progressShare ?? 0.7));
+  if (options.group) detections.push(...await groupDetections(brightened(frame), options.onProgress, options.progressShare ?? 0.7, !!options.lowRes));
   return dedupeBoxes(detections.map(d => ({...d, score: d.categories[0]?.score ?? 0, box: d.boundingBox})));
 }
 
@@ -79,7 +79,7 @@ export function brightened(frame: HTMLCanvasElement) {
   return out;
 }
 
-async function groupDetections(frame: HTMLCanvasElement, onProgress: ScanProgress | undefined, share: number): Promise<Detection[]> {
+async function groupDetections(frame: HTMLCanvasElement, onProgress: ScanProgress | undefined, share: number, lowRes: boolean): Promise<Detection[]> {
   const {detectFaceBoxes} = await import('./embeddings');
   const w = frame.width, h = frame.height;
   const toDetection = (b: {x: number; y: number; width: number; height: number; score: number}): Detection => ({
@@ -89,7 +89,7 @@ async function groupDetections(frame: HTMLCanvasElement, onProgress: ScanProgres
   });
   onProgress?.(0, 'Finding faces');
   const out = (await detectFaceBoxes(frame, 0.5)).map(toDetection);
-  const tiles = groupTileSizes(w, h).flatMap(size => tileGrid(w, h, size));
+  const tiles = groupTileSizes(w, h, lowRes).flatMap(size => tileGrid(w, h, size));
   let scanned = 0;
   for (const t of tiles) {
     onProgress?.(share * ++scanned / (tiles.length + 1), 'Finding faces');
@@ -151,7 +151,8 @@ export async function describeDetection(frame: HTMLCanvasElement, d: Detection, 
 /** Find and describe every face in an image or video frame. */
 export async function detect(source: Source, options: {group?: boolean; onProgress?: ScanProgress} = {}): Promise<DetectedFace[]> {
   const frame = toFrame(source);
-  const found = await findFaces(frame, options);
+  // Photos (not video frames) get the extra small-face scan when they are low resolution.
+  const found = await findFaces(frame, {...options, lowRes: true});
   const faces: DetectedFace[] = [];
   for (const d of found) {
     faces.push(await describeDetection(frame, d, {classroom: options.group, tight: isTightPortrait(frame.width, frame.height, found.length, d.boundingBox)}));

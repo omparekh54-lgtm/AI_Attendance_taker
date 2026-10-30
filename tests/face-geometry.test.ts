@@ -20,3 +20,10 @@ test('12 MP phone photos get a third, finer scan for back rows',()=>{assert.deep
 import {yawFromLandmarks} from '../src/face-geometry';
 const face=(noseX:number)=>Array.from({length:68},(_,i)=>i>=36&&i<42?{x:40,y:50}:i>=42&&i<48?{x:60,y:50}:i===30?{x:noseX,y:65}:{x:50,y:80});
 test('Head turn is 0 facing the camera and grows as the nose moves sideways',()=>{assert.equal(yawFromLandmarks(face(50)),0);assert.ok(Math.abs(yawFromLandmarks(face(62))-0.6)<1e-9);assert.ok(yawFromLandmarks(face(38))<-0.5);assert.equal(yawFromLandmarks([]),0)});
+
+test('Low-resolution class photos (e.g. WhatsApp copies) get extra small tiles; video frames and big photos do not',()=>{
+ assert.deepEqual(groupTileSizes(1280,960,true),[640,480,320,240]);
+ assert.deepEqual(groupTileSizes(1280,960),[640]);
+ assert.deepEqual(groupTileSizes(4032,3024,true),[2016,1210,756]);
+ assert.deepEqual(groupTileSizes(400,300,true),[]);
+});
