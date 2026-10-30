@@ -22,12 +22,14 @@ export function recognizeCapture(model:Model, faces:DetectedFace[], strangers:nu
   if(model.identity&&!f.face.embedding)return {id,image,reason:'Face features missing — retake'};
   const lowRes=f.sourceWidth&&f.sourceHeight&&Math.min(f.sourceWidth,f.sourceHeight)<SMALL_SOURCE;
   if(model.identity){
-   const p=predictIdentity(model.identity,f.face.embedding!,strangers);
+   // Width of the face in the photo: small faces are blurrier, so they get a longer (capped) limit.
+   const facePx=f.box&&f.sourceWidth?Math.min(f.box.w*f.sourceWidth,f.box.h*(f.sourceHeight??f.sourceWidth)):Infinity;
+   const p=predictIdentity(model.identity,f.face.embedding!,strangers,facePx);
    const embedding=f.face.embedding;
    if(p.stranger)return {id,image,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:'Looks like someone marked “Not a student”'};
    // Video: recognise each frame on its own. The averaged face is less noisy than any single photo, so it can sit
    // closer to a look-alike than the limits (set on single photos) allow for; the individual frames must pass too.
-   const perFrame=(f.frameEmbeddings?.length??0)>=2?f.frameEmbeddings!.map(e=>predictIdentity(model.identity!,e,strangers)):[];
+   const perFrame=(f.frameEmbeddings?.length??0)>=2?f.frameEmbeddings!.map(e=>predictIdentity(model.identity!,e,strangers,facePx)):[];
    const passing=perFrame.filter(q=>q.label===p.label&&q.accepted).length;
    const leaning=perFrame.filter(q=>q.label===p.label&&(q.accepted||q.suggested)).length;
    const conflict=perFrame.some(q=>q.label!==p.label&&q.accepted)||perFrame.some(q=>q.stranger);
@@ -37,8 +39,7 @@ export function recognizeCapture(model:Model, faces:DetectedFace[], strangers:nu
     const mostly=!conflict&&leaning>=Math.ceil(perFrame.length*FRAME_AGREEMENT)&&(p.accepted||p.suggested);
     return {id,image,suggestion:mostly?p.label:undefined,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:mostly?'Please confirm':'Changed between video frames'};
    }
-   // Small, distant faces are never marked on their own: the teacher confirms them with one tap.
-   const facePx=f.box&&f.sourceWidth?Math.min(f.box.w*f.sourceWidth,f.box.h*(f.sourceHeight??f.sourceWidth)):Infinity;
+   // Very small faces are never marked on their own: the teacher confirms them with one tap.
    if(p.accepted&&facePx<AUTO_MARK_MIN_FACE_PX)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:'Small face — please confirm'};
    // Turned and side-view faces are confirmed by the teacher: they are where look-alikes get mixed up.
    if(p.accepted&&Math.abs(f.face.yaw??0)>=TURNED_FACE_YAW)return {id,image,suggestion:p.label,candidates:p.candidates,distance:p.distance,frames:f.frames,embedding,reason:'Turned face — please confirm'};
