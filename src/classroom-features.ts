@@ -2,8 +2,9 @@ import {diverse, GALLERY_PER_STUDENT, CLASS_STYLE_SIZES} from './identity';
 import {describeAsSeenInClass, describeFaceWithPose} from './embeddings';
 import {TURNED_FACE_YAW} from './face-geometry';
 
-/** Bumped when the class-photo features gain something new, so the teacher page refreshes older records. */
-export const CLASSROOM_VERSION = 2;
+/** Bumped when the class-photo features gain something new, so the teacher page refreshes older records.
+ *  3: also described at 36 px (low-resolution class photos). */
+export const CLASSROOM_VERSION = 3;
 /** Turned (side) views per direction that also become class-photo references. */
 export const TURNED_PER_SIDE = 3;
 export const MAX_CLASSROOM_FEATURES = GALLERY_PER_STUDENT * CLASS_STYLE_SIZES.length + 2 * TURNED_PER_SIDE;

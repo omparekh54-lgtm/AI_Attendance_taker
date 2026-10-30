@@ -83,7 +83,7 @@ class SharedSecurityTests(SimpleTestCase):
         with patch('eigenroll_server.shared.db',side_effect=gateway):
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face(False) for _ in range(20)]}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[9.0]*128]}).status_code,400)
-            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*17}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*25}).status_code,400)
     def test_attendance_board_needs_no_key_and_never_sends_photos(self):
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[0.123456789]*128}]*20,'classroom':[[0.2]*128]*8}
         with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]) as db:

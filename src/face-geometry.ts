@@ -24,8 +24,10 @@ export const LOW_RES_SHORT_SIDE=1600, MIN_LOW_RES_TILE=240;
 
 /** Face-box sizes (px, as drawn by the detector) for classroom scans. Measured on the 26 real students' unseen photos:
  *  recognition stays 89–97% down to ~22 px boxes with no wrong students, but 1 of 416 unregistered look-alike tests
- *  below 32 px was matched to someone. So small faces are recognised but only ever suggested for the teacher to confirm. */
-export const MIN_RECOGNISABLE_FACE_PX = 22;
+ *  below 32 px was matched to someone. So small faces are recognised but only ever suggested for the teacher to confirm.
+ *  Low-resolution class photos (WhatsApp copies) put back rows at 16–22 px, so faces from 18 px are now read too: on real
+ *  faces at 18 px the right student is offered ~19% of the time, and they are never marked automatically. */
+export const MIN_RECOGNISABLE_FACE_PX = 18;
 export const AUTO_MARK_MIN_FACE_PX = 32;
 type Box = {originX: number; originY: number; width: number; height: number};
 /** Keep one box per face: drop a lower-scoring box that mostly overlaps a kept one or has its centre inside it. */

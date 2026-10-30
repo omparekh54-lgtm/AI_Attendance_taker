@@ -11,8 +11,11 @@ function score(v:number[],templates:Sample[],exclude=-1,neighbors=3){const byLab
 /** `classroom`: extra gallery entries describing students as they appear in class photos (small, far away),
  *  computed from their own enrolment photos. They join the gallery and PCA/LDA but not the distance calibration. */
 export const GALLERY_PER_STUDENT=8;
-/** Face widths (px) at which gallery photos are also described as seen in class. On the 26 real students, [80] lifted 36–44 px recognition from 89–93% to 97–98% with 0 wrong; adding 44/36 px let 1–4 of 624 unregistered look-alike tests through. */
-export const CLASS_STYLE_SIZES=[80];
+/** Face widths (px) at which gallery photos are also described as seen in class. On the 26 real students, [80] lifted
+ *  36–44 px recognition from 89–93% to 97–98% with 0 wrong. 36 px was added for low-resolution class photos: on real
+ *  faces 22–26 px wide it raised the right student being offered from 44–51% to 51–55% (with the capped limits below,
+ *  strangers marked stayed at 5 of 1200; under the old, uncapped rules it had let 1–4 of 624 look-alikes through). */
+export const CLASS_STYLE_SIZES=[80,36];
 /** Indices of up to `k` diverse vectors: the most typical first, then each next one farthest from those chosen. */
 export function diverse(vectors:number[][],k:number):number[]{
  if(!vectors.length)return [];
@@ -86,10 +89,11 @@ export function predictIdentity(model:IdentityModel,vector:number[],strangers:nu
 }
 /** Per-student limits. `percentile`/`gap`: stay below the closest 2% of classmate distances by 0.03.
  *  `floor`/`ceiling` keep a clear-face limit sane when a student has very few or very unusual photos. `maxCap`: no face
- *  is ever accepted further than this (different people's faces: only 0.1% come closer than 0.50 on real photos). */
-export const IMPOSTOR={percentile:.02,gap:.03,floor:.3,ceiling:.44,maxCap:.49};
+ *  is ever accepted further than this (different people's faces: only 0.1% come closer than 0.50 on real photos; 0.46 kept strangers marked
+ *  at 5 of 1200 on real 32 px faces, 0.49 let 16 through). */
+export const IMPOSTOR={percentile:.02,gap:.03,floor:.3,ceiling:.44,maxCap:.46};
 /** Small faces: from `from` px down to `to` px the limit grows by up to `extra` (never past the student's cap). */
-export const SMALL_FACE={from:48,to:24,extra:.07};
+export const SMALL_FACE={from:48,to:24,extra:.05};
 /** A face this close to a remembered stranger (relative to its best student) is left as unknown. */
 export const STRANGER_GAP=.03;
 /** Suggestions: at most `beyondLimit` past the student's own limit (and never past `distance`). */

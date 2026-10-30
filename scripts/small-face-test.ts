@@ -20,7 +20,9 @@ if (tune.IMPOSTOR && process.env.MAX_CAP) tune.IMPOSTOR.maxCap = Number(process.
 if (tune.IMPOSTOR && process.env.CEILING) tune.IMPOSTOR.ceiling = Number(process.env.CEILING);
 import {recognizeCapture, type DetectedFace} from '../src/attendance';
 
-type Person = {id: string; photos: ({embedding: number[]; yaw: number} | null)[]; classroom: number[][]};
+type Person = {id: string; photos: ({embedding: number[]; yaw: number; at48?: number[] | null; at36?: number[] | null} | null)[]; classroom: number[][]};
+// Experiment: EXTRA_REFS=at48,at36 adds each registration photo described as seen at 48 / 36 px as class-photo references.
+const extraRefs = (process.env.EXTRA_REFS ?? '').split(',').filter(Boolean) as ('at48' | 'at36')[];
 type Small = {id: string; sizes: Record<string, (number[] | null)[]>};
 const args = process.argv.slice(2), files = args.filter(a => !a.startsWith('--'));
 const small = new Map((JSON.parse(readFileSync(files[1], 'utf8')) as Small[]).map(s => [s.id, s]));
@@ -40,7 +42,7 @@ const tally = (): T => ({students: 0, accepted: 0, acceptedWrong: 0, marked: 0, 
 const results: Record<string, T> = Object.fromEntries(sizes.map(s => [s, tally()]));
 for (let split = 0; split < SPLITS; split++) {
   const order = shuffle(people), cut = Math.round(order.length * 0.7), registered = order.slice(0, cut), strangers = order.slice(cut);
-  const model = buildModel(registered.map(p => ({id: p.id, faces: p.photos.slice(0, 7).flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])), classroom: p.classroom})), 'small');
+  const model = buildModel(registered.map(p => ({id: p.id, faces: p.photos.slice(0, 7).flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])), classroom: [...p.classroom, ...p.photos.slice(0, 7).flatMap(ph => extraRefs.flatMap(k => (ph?.[k] ? [ph[k]!] : [])))]})), 'small');
   for (const size of sizes) {
     const t = results[size], px = Number(size);
     for (const p of registered) for (const v of small.get(p.id)!.sizes[size].slice(7)) {
