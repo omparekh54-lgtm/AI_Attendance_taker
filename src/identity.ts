@@ -14,8 +14,10 @@ export const GALLERY_PER_STUDENT=8;
 /** Face widths (px) at which gallery photos are also described as seen in class. On the 26 real students, [80] lifted
  *  36–44 px recognition from 89–93% to 97–98% with 0 wrong. 36 px was added for low-resolution class photos: on real
  *  faces 22–26 px wide it raised the right student being offered from 44–51% to 51–55% (with the capped limits below,
- *  strangers marked stayed at 5 of 1200; under the old, uncapped rules it had let 1–4 of 624 look-alikes through). */
-export const CLASS_STYLE_SIZES=[80,36];
+ *  strangers marked stayed at 5 of 1200; under the old, uncapped rules it had let 1–4 of 624 look-alikes through).
+ *  24 px was added for back rows (AT&T, 20 splits): right student offered 42→57% at 26 px, 33→47% at 22 px, 14→28% at
+ *  18 px; 0 wrong students marked; wrong suggestions 28→18 in total. Strangers marked at 32 px: 7→4 of 2400. */
+export const CLASS_STYLE_SIZES=[80,36,24];
 /** Indices of up to `k` diverse vectors: the most typical first, then each next one farthest from those chosen. */
 export function diverse(vectors:number[][],k:number):number[]{
  if(!vectors.length)return [];

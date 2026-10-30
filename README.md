@@ -150,6 +150,16 @@ Real faces (AT&T, 40 people) shrunk to class-photo sizes and JPEG-compressed, th
 
 Generated look-alike classes: strangers named 1–2 of 360 per scenario (previous release 0–1, before these releases 4–8). Composed 12 MP class photos: 168/186 students marked (previous 164), back row 14/26 (previous 11), 0 wrong, 0 strangers named.
 
+### Back rows
+
+Back-row faces are often 17–30 px wide, too small for the recognition model to tell people apart reliably. Three changes help, measured on the same AT&T faces (20 splits, ~30% unregistered):
+
+- **24 px references:** registration photos are also described as seen 24 px wide (`CLASS_STYLE_SIZES` 80/36/24, class-photo features version 4; existing students get them when the teacher page is opened). Right student offered: 26 px 42→57%, 22 px 33→47%, 18 px 14→28%; 0 wrong students marked; wrong suggestions 28→18.
+- **Two photos agree:** a face under 32 px that passed every check except its size, in two separate photos (same person, at least 24 px), is marked ("Matched in two photos"). 26 px: 22% of students' photo pairs marked automatically (0% before), 0 wrong students, 0 of 3,600 stranger pairs. A looser rule (any two "Is this …?" suggestions) named 5–7 strangers, so it is not used.
+- **Zoom for back rows:** the in-app camera offers 1× / 2× / 3× where the browser supports camera zoom (Chrome on most Android phones), for a second, closer photo of the back rows.
+
+Tried and not used (both measured worse): removing a student's odd registration photos (3 wrong students marked where there were 0) and per-student score normalisation (2–3× more wrong suggestions). `scripts/roster-holdout-test.ts` repeats the open-set test on a real roster's own registration photos.
+
 **Best results in class:** use the app's camera on a phone or upload the original photo (not a WhatsApp copy), and for big rooms take two or three photos (left, middle, right) or one closer to the back rows; the head count does not count the same person twice.
 
 ## Startup performance

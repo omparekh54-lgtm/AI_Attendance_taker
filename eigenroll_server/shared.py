@@ -35,8 +35,8 @@ def query(table,**params): return table+'?'+urlencode(params)
 def valid_features(v): return isinstance(v,list) and len(v)==128 and all(type(x) in (float,int) and math.isfinite(x) and abs(x)<=5 for x in v)
 r5=lambda v:[round(x,5) for x in v]
 # Face features as seen in a class photo: 8 varied views plus up to 3 side views each way (room to grow).
-# Class-photo references per student: 8 photos x 2 sizes (80 and 36 px) + up to 6 side views.
-MAX_CLASSROOM=24
+# Class-photo references per student: 8 photos x 3 sizes (80, 36 and 24 px) + up to 6 side views.
+MAX_CLASSROOM=32
 def valid_yaw(v): return v is None or (type(v) in (int,float) and math.isfinite(v) and abs(v)<=10)
 SESSION_SECONDS=8*3600
 REMEMBER_SECONDS=30*24*3600
@@ -174,7 +174,7 @@ def side_views(request):
     merged=(p.get('faces',[])+straight+turned)
     if len(merged)>MAX_FACES:  # keep the newest side views; drop the oldest extra samples
         merged=merged[:MAX_FACES-len(turned)]+turned
-    old=p.get('classroom',[])[:16]
+    old=p.get('classroom',[])[:24]
     payload={**p,'faces':merged,'classroom':(old+classroom)[:MAX_CLASSROOM],'classroomVersion':max(2,int(p.get('classroomVersion',1))),'sideViewsAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
     updated=db(query('eigenroll_entities',id='eq.'+row['id'],revision='eq.'+str(int(row['revision']))),'PATCH',{'payload':payload,'revision':int(row['revision'])+1,'updated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())},'return=representation')
     if not updated:raise GatewayError('Your registration was being updated at the same moment. Please try again.',409)
