@@ -33,7 +33,7 @@ function trainModel(students: Student[], classroom: Sample[] = []): Promise<Mode
     const worker = new Worker(new URL('./train.worker.ts', import.meta.url), {type: 'module'});
     worker.onmessage = e => { worker.terminate(); if (e.data.error) reject(Error(e.data.error)); else resolve(e.data.model); };
     worker.onerror = e => { worker.terminate(); reject(Error(e.message)); };
-    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
+    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, classroomPx: s.classroomPx, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
   });
 }
 
@@ -120,7 +120,7 @@ function App() {
         for (const s of needClass) {
           setBusy(`Preparing classroom recognition ${++done} / ${needClass.length}`);
           const result = await classroomFeatures(s.faces.map(f => ({image: f.image, embedding: f.embedding!, yaw: f.yaw})));
-          s.classroom = result.classroom; s.classroomVersion = CLASSROOM_VERSION;
+          s.classroom = result.classroom; s.classroomPx = result.classroomPx; s.classroomVersion = CLASSROOM_VERSION;
           s.faces.forEach((f, i) => { f.yaw = Math.round(result.yaws[i] * 1000) / 1000; });
         }
       }

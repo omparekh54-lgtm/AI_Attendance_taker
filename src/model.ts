@@ -1,5 +1,5 @@
 import type {IdentityModel} from './identity';
-export type Sample={label:string;vector:number[]};
+export type Sample={label:string;vector:number[];/** class-photo reference made at this face width */px?:number};
 export type Model={mean:number[];pca:number[][];lda:number[][];templates:Sample[];limits:Record<string,number>;version:string;dimensions:number;trainedAt:string;rosterSignature?:string;identity?:IdentityModel};
 const dot=(a:number[],b:number[])=>a.reduce((s,v,i)=>s+v*b[i],0);
 const norm=(a:number[])=>Math.sqrt(dot(a,a));

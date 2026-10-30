@@ -30,7 +30,8 @@ function run(version: 'before' | 'after') {
     const model = buildModel(photo.registered.filter(id => people.has(id)).map(id => {
       const p = people.get(id)!, reg = p.photos.slice(0, 7);
       return {id, faces: reg.flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])),
-        classroom: [...p.classroom, ...(version === 'after' ? reg.flatMap(ph => (ph?.at24 ? [ph.at24] : [])) : [])]};
+        classroom: [...p.classroom, ...(version === 'after' ? reg.flatMap(ph => (ph?.at24 ? [ph.at24] : [])) : [])],
+        classroomPx: [...p.classroom.map(() => 0), ...reg.flatMap(ph => (ph?.at24 ? [process.env.NO_GATE ? 0 : 24] : []))]};
     }), 'benchmark');
     // Which seat each detected face belongs to (face centre inside the seat).
     const seatOf = (s: Shot[number], f: DetectedFace) => {

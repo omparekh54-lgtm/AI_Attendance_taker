@@ -62,3 +62,18 @@ test('back-row zoom steps follow what the camera supports',async()=>{
  assert.deepEqual(zoomSteps({min:1,max:10}),[1,2,3]);
  assert.deepEqual(zoomSteps({min:1,max:2.5}),[1,2,2.5]);
 });
+
+test('24 px class-photo references can mark small faces but only suggest for bigger ones', async () => {
+  const {trainIdentity, predictIdentity} = await import('../src/identity');
+  const rnd = (seed: number) => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - .5; };
+  const r = rnd(7), base = (k: number) => Array.from({length: 128}, (_, d) => Math.sin(d * (k + 1) * 1.7) * .3);
+  const jitter = (v: number[], s: number) => v.map(x => x + r() * s);
+  const samples = [0, 1, 2, 3].flatMap(k => Array.from({length: 10}, () => ({label: 's' + k, vector: jitter(base(k), .04)})));
+  // A "blurry" version of student 0 only exists as a 24 px class-photo reference.
+  const blurry = base(9).map((x, d) => (x + base(0)[d]) / 2);
+  const model = trainIdentity(samples, Array.from({length: 4}, () => ({label: 's0', vector: jitter(blurry, .01), px: 24})));
+  const face = jitter(blurry, .01);
+  const small = predictIdentity(model, face, [], 26), big = predictIdentity(model, face, [], 46);
+  assert.equal(small.label, 's0'); assert.equal(small.accepted, true);
+  assert.equal(big.accepted, false); assert.equal(big.suggested, true); assert.equal(big.label, 's0');
+});

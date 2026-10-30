@@ -3,8 +3,9 @@ import {describeAsSeenInClass, describeFaceWithPose} from './embeddings';
 import {TURNED_FACE_YAW} from './face-geometry';
 
 /** Bumped when the class-photo features gain something new, so the teacher page refreshes older records.
- *  3: also described at 36 px (low-resolution class photos). 4: also at 24 px (back rows). */
-export const CLASSROOM_VERSION = 4;
+ *  3: also described at 36 px (low-resolution class photos). 4: also at 24 px (back rows). 5: each feature's size is
+ *  stored (classroomPx), so 24 px features can mark only small faces. */
+export const CLASSROOM_VERSION = 5;
 /** Turned (side) views per direction that also become class-photo references. */
 export const TURNED_PER_SIDE = 3;
 export const MAX_CLASSROOM_FEATURES = GALLERY_PER_STUDENT * CLASS_STYLE_SIZES.length + 2 * TURNED_PER_SIDE;
@@ -35,12 +36,12 @@ export async function classroomFeatures(faces: {image: string; embedding: number
   }
   const {frontal, turned} = classroomPicks(posed);
   const jobs = [...frontal.flatMap(i => CLASS_STYLE_SIZES.map(px => ({image: posed[i].image, px}))), ...turned.map(i => ({image: posed[i].image, px: CLASS_STYLE_SIZES[0]}))];
-  const out: number[][] = [];
+  const out: number[][] = [], sizes: number[] = [];
   for (const [n, p] of jobs.entries()) {
     onProgress?.(n, jobs.length);
-    try { out.push((await describeAsSeenInClass(p.image, p.px)).map(v => Math.round(v * 1e5) / 1e5)); } catch { /* unusable photo */ }
+    try { out.push((await describeAsSeenInClass(p.image, p.px)).map(v => Math.round(v * 1e5) / 1e5)); sizes.push(p.px); } catch { /* unusable photo */ }
   }
-  return {classroom: out, yaws: posed.map(f => f.yaw)};
+  return {classroom: out, classroomPx: sizes, yaws: posed.map(f => f.yaw)};
 }
 
 /** Class-photo features for newly added side views only (the straight-on ones are already stored). */

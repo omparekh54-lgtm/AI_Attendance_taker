@@ -84,6 +84,9 @@ class SharedSecurityTests(SimpleTestCase):
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face(False) for _ in range(20)]}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[9.0]*128]}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*33}).status_code,400)
+            # Feature sizes must be whole pixel widths, one per feature.
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*3,'classroomPx':[80,36]}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*2,'classroomPx':[80,'x']}).status_code,400)
     def test_attendance_board_needs_no_key_and_never_sends_photos(self):
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[0.123456789]*128}]*20,'classroom':[[0.2]*128]*8}
         with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]) as db:
@@ -91,7 +94,9 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertEqual(r.status_code,200);self.assertEqual(db.call_count,1);self.assertIn('payload-%3E%3EclassId=eq.classroom',db.call_args.args[0])
         snap=r.json();s=snap['students'][0]
         self.assertNotContains(r,'private-photo');self.assertEqual(s['faces'][0]['vector'],[]);self.assertEqual(s['faces'][0]['embedding'][0],0.12346)
-        self.assertEqual(len(s['classroom']),8);self.assertEqual(r['Cache-Control'],'no-store')
+        self.assertEqual(len(s['classroom']),8);self.assertEqual(r['Cache-Control'],'no-store');self.assertNotIn('classroomPx',s)
+        with patch('eigenroll_server.shared.db',return_value=[{'payload':{**student,'classroomPx':[80,36,24,80,36,24,80,80]}}]):
+            self.assertEqual(self.client.get('/api/attendance?kind=snapshot').json()['students'][0]['classroomPx'][2],24)
         self.assertEqual(self.client.get('/api/attendance?kind=students').status_code,400)
         self.assertEqual(self.post('/api/attendance',{}).status_code,405)
         self.assertEqual(self.post('/api/workspace',{}).status_code,401)
@@ -154,6 +159,11 @@ class SideViewTests(SimpleTestCase):
         self.assertEqual(r.status_code,200,r.content)
         path,body=written[0];self.assertIn('revision=eq.3',path);self.assertEqual(body['revision'],4)
         self.assertEqual(len(body['payload']['faces']),26);self.assertEqual(len(body['payload']['classroom']),12);self.assertEqual(body['payload']['classroomVersion'],2)
+        self.assertNotIn('classroomPx',body['payload'])
+    def test_side_views_keep_feature_sizes_in_step(self):
+        self.stored['payload']['classroomPx']=[80,36,24]*2+[80,36]
+        r,written=self.run_with([self.face(0.001,0.0)]*2+[self.face(0.003,0.6)]*2+[self.face(0.003,-0.5)]*2)
+        self.assertEqual(r.status_code,200,r.content);self.assertEqual(written[0][1]['payload']['classroomPx'],[80,36,24]*2+[80,36]+[80]*4)
     def test_someone_else_cannot_add_faces_to_a_registration(self):
         faces=[self.face(0.2,0.0)]*2+[self.face(0.2,0.6)]*2+[self.face(0.2,-0.5)]*2
         r,written=self.run_with(faces)

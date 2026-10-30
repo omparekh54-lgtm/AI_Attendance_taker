@@ -37,6 +37,7 @@ r5=lambda v:[round(x,5) for x in v]
 # Face features as seen in a class photo: 8 varied views plus up to 3 side views each way (room to grow).
 # Class-photo references per student: 8 photos x 3 sizes (80, 36 and 24 px) + up to 6 side views.
 MAX_CLASSROOM=32
+def valid_sizes(v,n): return v is None or (isinstance(v,list) and len(v)==n and all(type(x) is int and 0<=x<=400 for x in v))
 def valid_yaw(v): return v is None or (type(v) in (int,float) and math.isfinite(v) and abs(v)<=10)
 SESSION_SECONDS=8*3600
 REMEMBER_SECONDS=30*24*3600
@@ -175,7 +176,10 @@ def side_views(request):
     if len(merged)>MAX_FACES:  # keep the newest side views; drop the oldest extra samples
         merged=merged[:MAX_FACES-len(turned)]+turned
     old=p.get('classroom',[])[:24]
-    payload={**p,'faces':merged,'classroom':(old+classroom)[:MAX_CLASSROOM],'classroomVersion':max(2,int(p.get('classroomVersion',1))),'sideViewsAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+    # Side views are described at the largest class-photo size; keep the per-feature sizes in step when they are known.
+    sizes=p.get('classroomPx')
+    sizes={'classroomPx':(sizes[:24]+[80]*len(classroom))[:MAX_CLASSROOM]} if valid_sizes(sizes,len(p.get('classroom',[]))) and sizes else {}
+    payload={**p,**sizes,'faces':merged,'classroom':(old+classroom)[:MAX_CLASSROOM],'classroomVersion':max(2,int(p.get('classroomVersion',1))),'sideViewsAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
     updated=db(query('eigenroll_entities',id='eq.'+row['id'],revision='eq.'+str(int(row['revision']))),'PATCH',{'payload':payload,'revision':int(row['revision'])+1,'updated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())},'return=representation')
     if not updated:raise GatewayError('Your registration was being updated at the same moment. Please try again.',409)
     return JsonResponse({'ok':True,'name':p.get('name',''),'message':'Side views added. You can now be recognised when turned to the side.'})
@@ -200,10 +204,12 @@ def enrollment(request):
     if not isinstance(classroom,list) or len(classroom)>MAX_CLASSROOM or not all(valid_features(v) for v in classroom):raise GatewayError('Invalid classroom features.',400)
     version=d.get('classroomVersion',1)
     if type(version) is not int or not 1<=version<=100:raise GatewayError('Invalid classroom features.',400)
+    sizes=d.get('classroomPx')
+    if not valid_sizes(sizes,len(classroom)):raise GatewayError('Invalid classroom features.',400)
     students=db(query('eigenroll_entities',kind='eq.students',select='payload',**{'payload->>classId':'eq.'+invite['classId'],'payload->>roll':'eq.'+roll.strip()}))
     if students: raise GatewayError('This SAP ID is already registered. Contact your teacher if your details need to change.',409)
     ident=str(uuid.uuid4())
-    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,'classroomVersion':version,
+    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,**({'classroomPx':sizes} if sizes else {}),'classroomVersion':version,
             'registeredAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
     # Registered students join the attendance roster immediately; the board builds its model from the roster.
     db('eigenroll_entities','POST',{'id':'students:'+ident,'kind':'students','payload':record})
@@ -223,7 +229,7 @@ def attendance(request):
             p=row['payload']
             students.append({k:p[k] for k in ('id','name','roll','classId')}|{
                 'faces':[{'image':'','vector':[],**({'embedding':r5(f['embedding'])} if f.get('embedding') else {})} for f in p.get('faces',[])],
-                'classroom':[r5(v) for v in p.get('classroom',[])]})
+                'classroom':[r5(v) for v in p.get('classroom',[])]}|({'classroomPx':p['classroomPx']} if valid_sizes(p.get('classroomPx'),len(p.get('classroom',[]))) and p.get('classroomPx') else {}))
         if len(rows)<100:break
         offset+=100
     result=JsonResponse({'classes':[{'id':'classroom','name':'BTI DS 2022 - 28'}],'students':students,'models':{},'sessions':[]},json_dumps_params={'separators':(',',':')})

@@ -3,7 +3,7 @@ import {trainIdentity, compactModel} from './identity';
 import type {Model, Sample} from './model';
 import type {Student} from './store';
 
-type RosterStudent = Pick<Student, 'id' | 'faces' | 'classroom'>;
+type RosterStudent = Pick<Student, 'id' | 'faces' | 'classroom' | 'classroomPx'>;
 
 /** Recognition model for a roster. The identity-feature model is what the board uses; the pixel PCA/LDA
  *  baseline is added when the pixel samples are available (the teacher page), and skipped on the board. */
@@ -11,7 +11,7 @@ export function buildModel(students: RosterStudent[], signature: string, classro
   const missing = students.filter(s => !s.faces.length || s.faces.some(f => !f.embedding)).map(s => s.id);
   if (missing.length) throw Error(`Face features are missing for ${missing.length} student${missing.length === 1 ? '' : 's'}. Ask them to register again.`);
   const identitySamples = students.flatMap(s => s.faces.map(f => ({label: s.id, vector: f.embedding!})));
-  const classStyle = [...classroom, ...students.flatMap(s => (s.classroom ?? []).map(vector => ({label: s.id, vector})))];
+  const classStyle = [...classroom, ...students.flatMap(s => (s.classroom ?? []).map((vector, i) => ({label: s.id, vector, ...(s.classroomPx?.[i] ? {px: s.classroomPx[i]} : {})})))];
   const identity = trainIdentity(identitySamples, classStyle);
   const pixels = students.every(s => s.faces.every(f => f.vector.length === 576));
   const base: Omit<Model, 'identity' | 'rosterSignature'> = pixels

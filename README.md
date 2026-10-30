@@ -160,6 +160,22 @@ Back-row faces are often 17–30 px wide, too small for the recognition model to
 
 Tried and not used (both measured worse): removing a student's odd registration photos (3 wrong students marked where there were 0) and per-student score normalisation (2–3× more wrong suggestions). `scripts/roster-holdout-test.ts` repeats the open-set test on a real roster's own registration photos.
 
+### Smartboard cameras (dim, soft, compressed photos)
+
+Measured on composed 12 MP class photos (23–24 students each, ~⅓ unregistered) re-saved as a smartboard webcam would take them (`degrade`: dimmer, lower contrast, blur, sensor noise, JPEG 55):
+
+- **Detection:** the classroom detector now runs on a levels-corrected copy of a dim or flat photo (`normalisedForDetection`; recognition still uses the original). Faces found in a 720p photo: 4 → 16 of 35; 1080p: 16 → 20 of 35; phone photos unchanged (31 of 35), no false boxes.
+- **24 px references are size-gated:** on blurry photos they also resemble bigger faces, and let 2 of 48 unregistered people with 40–46 px faces be named. They now mark only faces up to ~34 px (`SIZE_GATE`); for bigger faces they can only lead to "Is this …?". Each class-photo feature's size is stored (`classroomPx`, class-photo features version 5).
+
+| Camera | Marked automatically | Marked or offered to confirm | Wrong student marked | Unregistered named |
+|---|---|---|---|---|
+| Phone, 12 MP | 89% | 91% | 0 | 0 of 96 |
+| Smartboard 1080p, one photo | 12–15% | 28 → 41% | 0 | 0 of 48 |
+| Smartboard 1080p, two photos | 20% | 30 → 48% | 0 | 0 of 24 |
+| Smartboard 720p, one photo | 2% | 6 → 17% | 0 | 0 of 48 |
+
+Back-row faces (under 25 px in the photo) were not readable at 1080p or 720p (0–6%). A smartboard camera can register who sits in front; for the whole class use the phone app, a 4K camera, or a second, zoomed photo of the back rows.
+
 **Best results in class:** use the app's camera on a phone or upload the original photo (not a WhatsApp copy), and for big rooms take two or three photos (left, middle, right) or one closer to the back rows; the head count does not count the same person twice.
 
 ## Startup performance

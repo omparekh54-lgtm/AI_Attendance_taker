@@ -7,7 +7,7 @@ export const IDENTITY_RULES=3;
  *  close their classmates come (small faces are allowed past `limits`, never past `caps`). */
 export type IdentityModel={extractor:string;rules?:number;templates:Sample[];limits:Record<string,number>;caps?:Record<string,number>;norm?:Record<string,[number,number]>;pcaLda:Model;maxRatio:number;minMargin:number;neighbors:number};
 const distance=(a:number[],b:number[])=>Math.sqrt(a.reduce((n,v,i)=>n+(v-b[i])**2,0));
-function score(v:number[],templates:Sample[],exclude=-1,neighbors=3,norm?:Record<string,[number,number]>){const byLabel=new Map<string,number[]>();templates.forEach((s,i)=>{if(i===exclude)return;const a=byLabel.get(s.label)??[];a.push(distance(v,s.vector));byLabel.set(s.label,a)});return [...byLabel].map(([label,distances])=>{distances.sort((a,b)=>a-b);const nearest=distances.slice(0,Math.min(neighbors,distances.length));const distance=nearest.reduce((a,b)=>a+b,0)/nearest.length,n=norm?.[label];return {label,distance,z:n?(distance-n[0])/n[1]:distance}}).sort((a,b)=>a.z-b.z)}
+function score(v:number[],templates:Sample[],exclude=-1,neighbors=3,norm?:Record<string,[number,number]>,facePx=Infinity){const byLabel=new Map<string,number[]>();templates.forEach((s,i)=>{if(i===exclude||!sizeFits(s,facePx))return;const a=byLabel.get(s.label)??[];a.push(distance(v,s.vector));byLabel.set(s.label,a)});return [...byLabel].map(([label,distances])=>{distances.sort((a,b)=>a-b);const nearest=distances.slice(0,Math.min(neighbors,distances.length));const distance=nearest.reduce((a,b)=>a+b,0)/nearest.length,n=norm?.[label];return {label,distance,z:n?(distance-n[0])/n[1]:distance}}).sort((a,b)=>a.z-b.z)}
 /** `classroom`: extra gallery entries describing students as they appear in class photos (small, far away),
  *  computed from their own enrolment photos. They join the gallery and PCA/LDA but not the distance calibration. */
 export const GALLERY_PER_STUDENT=8;
@@ -18,6 +18,12 @@ export const GALLERY_PER_STUDENT=8;
  *  24 px was added for back rows (AT&T, 20 splits): right student offered 42→57% at 26 px, 33→47% at 22 px, 14→28% at
  *  18 px; 0 wrong students marked; wrong suggestions 28→18 in total. Strangers marked at 32 px: 7→4 of 2400. */
 export const CLASS_STYLE_SIZES=[80,36,24];
+/** A reference made at `px` can mark faces up to px / `minRatio` wide (the 24 px ones: faces up to ~34 px). Against a
+ *  bigger face it can only lead to a "please confirm" suggestion: blurry small references resemble any blurry face, and
+ *  on dim 1080p class photos they let 2 of 48 unregistered people with 40–46 px faces be named. References without a
+ *  size (enrolment photos, older records) always count. */
+export const SIZE_GATE={minRatio:.7};
+const sizeFits=(s:Sample,facePx:number)=>!s.px||s.px>=CLASS_STYLE_SIZES[0]||s.px>=Math.min(facePx,1e9)*SIZE_GATE.minRatio;
 /** Indices of up to `k` diverse vectors: the most typical first, then each next one farthest from those chosen. */
 export function diverse(vectors:number[][],k:number):number[]{
  if(!vectors.length)return [];
@@ -57,13 +63,13 @@ export function trainIdentity(samples:Sample[],classroom:Sample[]=[]):IdentityMo
  }
  const round=(v:number[])=>v.map(x=>Math.round(x*1e6)/1e6);
  const templates=selected.map(i=>({label:samples[i].label,vector:round(samples[i].vector)})),limits:Record<string,number>={},caps:Record<string,number>={};
- const gallery=[...templates,...classroom.map(c=>({label:c.label,vector:round(c.vector)}))];
+ const gallery=[...templates,...classroom.map(c=>({label:c.label,vector:round(c.vector),...(c.px?{px:c.px}:{})}))];
  // How close do CLASSMATES come to each student? Unregistered students are the same age and background as the
  // registered ones, so the class itself is the best stand-in for strangers. Each training face is scored once
  // against everyone's gallery; for every other student, that distance is an "impostor" distance.
  const impostor=new Map<string,number[]>();
  for(const s of [...samples,...classroom]){
-  for(const r of score(s.vector,gallery,-1,2))if(r.label!==s.label){const a=impostor.get(r.label)??[];a.push(r.distance);impostor.set(r.label,a)}
+  for(const r of score(s.vector,gallery,-1,2,undefined,0))if(r.label!==s.label){const a=impostor.get(r.label)??[];a.push(r.distance);impostor.set(r.label,a)}
  }
  const norm:Record<string,[number,number]>={};
  for(const label of Object.keys(pcaLda.limits)){
@@ -94,21 +100,28 @@ export function smallFaceAllowance(px:number){
  *  `facePx`: width of the face in the photo (omit for a clear, close-up face). */
 export function predictIdentity(model:IdentityModel,vector:number[],strangers:number[][]=[],facePx=Infinity){
  if(vector.length!==128||vector.some(v=>!Number.isFinite(v)||Math.abs(v)>5))throw Error('Invalid face descriptor.');
- const scores=score(vector,model.templates,-1,model.neighbors??3,model.norm),best=scores[0],runnerUp=scores[1];if(!best||!runnerUp)throw Error('At least two trained identities are required.');
- const ratio=best.distance/Math.max(runnerUp.distance,1e-9),margin=runnerUp.distance-best.distance;
- const discriminant=predict(model.pcaLda,vector);
- const pcaAgreement=discriminant.label===best.label;
  const strangerDistance=strangers.reduce((m,s)=>Math.min(m,distance(vector,s)),Infinity);
- const stranger=strangerDistance<=best.distance+STRANGER_GAP;
- // Within this student's own limit, clearly ahead of the next student, and PCA/LDA agrees.
- // There is deliberately no "far ahead of everyone" shortcut (the old 0.47 clear-lead rule): a stranger can be far
- // from every other student and still not be this one. In open-set tests it was the main source of strangers named.
- const cap=model.caps?.[best.label]??IMPOSTOR.maxCap;
- const limit=Math.min(cap,model.limits[best.label]+smallFaceAllowance(facePx));
- const accepted=!stranger&&pcaAgreement&&best.distance<=limit&&ratio<=model.maxRatio&&margin>=model.minMargin;
- // Not safe to mark automatically, but close enough to this student to offer the teacher a one-tap confirmation.
- const suggested=!accepted&&!stranger&&best.distance<=Math.min(SUGGEST.distance,limit+SUGGEST.beyondLimit)&&ratio<=SUGGEST.ratio&&margin>=SUGGEST.margin;
- return {...best,ratio,margin,limit,accepted,suggested,stranger,strangerDistance,pcaAgreement,candidates:scores.slice(0,3).map(s=>s.label)};
+ const discriminant=predict(model.pcaLda,vector);
+ const judge=(gated:boolean)=>{
+  const scores=score(vector,model.templates,-1,model.neighbors??3,model.norm,gated?facePx:0),best=scores[0],runnerUp=scores[1];if(!best||!runnerUp)throw Error('At least two trained identities are required.');
+  const ratio=best.distance/Math.max(runnerUp.distance,1e-9),margin=runnerUp.distance-best.distance;
+  const pcaAgreement=discriminant.label===best.label;
+  const stranger=strangerDistance<=best.distance+STRANGER_GAP;
+  // Within this student's own limit, clearly ahead of the next student, and PCA/LDA agrees.
+  // There is deliberately no "far ahead of everyone" shortcut (the old 0.47 clear-lead rule): a stranger can be far
+  // from every other student and still not be this one. In open-set tests it was the main source of strangers named.
+  const cap=model.caps?.[best.label]??IMPOSTOR.maxCap;
+  const limit=Math.min(cap,model.limits[best.label]+smallFaceAllowance(facePx));
+  const accepted=!stranger&&pcaAgreement&&best.distance<=limit&&ratio<=model.maxRatio&&margin>=model.minMargin;
+  // Not safe to mark automatically, but close enough to this student to offer the teacher a one-tap confirmation.
+  const suggested=!accepted&&!stranger&&best.distance<=Math.min(SUGGEST.distance,limit+SUGGEST.beyondLimit)&&ratio<=SUGGEST.ratio&&margin>=SUGGEST.margin;
+  return {...best,ratio,margin,limit,accepted,suggested,stranger,strangerDistance,pcaAgreement,candidates:scores.slice(0,3).map(s=>s.label)};
+ };
+ const fit=judge(true);
+ if(fit.accepted||fit.stranger)return fit;
+ // Small references against a bigger face (blurry photo): good enough to offer, never to mark on their own.
+ const any=judge(false);
+ return any.accepted||any.suggested?{...any,accepted:false,suggested:true}:fit;
 }
 /** Per-student limits. `percentile`/`gap`: stay below the closest 2% of classmate distances by 0.03.
  *  `floor`/`ceiling` keep a clear-face limit sane when a student has very few or very unusual photos. `maxCap`: no face
