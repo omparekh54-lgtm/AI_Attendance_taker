@@ -17,6 +17,8 @@ import {recognizeCapture, type DetectedFace, type Observation} from '../src/atte
 const counting: {headCount?: typeof import('../src/head-count').headCount} = await import('../src/head-count').catch(() => ({}));
 
 type Photo = {embedding: number[]; yaw: number; at48: number[] | null; at36: number[] | null} | null;
+// Experiment: EXTRA_REFS=at36 adds registration photos described as seen at 36 px (as CLASS_STYLE_SIZES [80, 36] does).
+const extraRefs = (process.env.EXTRA_REFS ?? '').split(',').filter(Boolean) as ('at48' | 'at36')[];
 type Person = {id: string; photos: Photo[]; classroom: number[][]};
 const SPLITS = 20, LESSONS = 3, PRESENT_RATE = 0.85;
 const args = process.argv.slice(2), file = args.find(a => !a.startsWith('--'));
@@ -56,7 +58,7 @@ for (const q of ['registration', 'at48', 'at36'] as Quality[]) results[q] = {pho
 for (let split = 0; split < SPLITS; split++) {
   const order = shuffle(people), cut = Math.round(order.length * 0.7);
   const registered = order.slice(0, cut), strangers = order.slice(cut);
-  const model = buildModel(registered.map(p => ({id: p.id, faces: p.photos.slice(0, 7).flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])), classroom: p.classroom})), 'real');
+  const model = buildModel(registered.map(p => ({id: p.id, faces: p.photos.slice(0, 7).flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])), classroom: [...p.classroom, ...p.photos.slice(0, 7).flatMap(ph => extraRefs.flatMap(k => ((ph as Record<string, unknown> | null)?.[k] ? [(ph as Record<string, number[]>)[k]] : [])))]})), 'real');
   for (const q of ['registration', 'at48', 'at36'] as Quality[]) {
     const r = results[q];
     for (let lesson = 0; lesson < LESSONS; lesson++) {

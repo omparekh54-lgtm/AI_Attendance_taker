@@ -125,6 +125,33 @@ No classroom data was available, so the changes were tested on 400 real photos o
 
 Limits: these 40 people are more distinct from each other than a class of same-age students, so strangers were not named even by the old code here; the generated look-alike tests above are where that difference shows. The composed photos have faces on a plain backdrop, not in a crowded room.
 
+### Low-resolution class photos (small faces)
+
+Real class photos sent as WhatsApp copies (1280×960) put most faces at 16–30 px wide; the release before this one found and named few of them. Changes:
+
+- **Finding small faces:** photos whose shorter side is under 1600 px are also scanned in half- and third-height tiles, which the detector enlarges. On three real 1280×960 class photos this found 20 / 19 / 24 faces instead of 18 / 18 / 19 (every person in the first photo). Faces from 18 px are read (suggestions only; automatic marking still needs 32 px).
+- **Size-aware limits:** a smaller face is blurrier, so even the right student is further away (real faces: typically 0.38 at 32 px, 0.47 at 24 px) while different people stay about 0.50 or more. Each student's limit grows by up to 0.05 as the face shrinks from 48 to 24 px, never past a per-student cap set from their closest classmates (at most 0.46).
+- **Matching like with like:** each student's registration photos are also described as seen at 36 px (besides 80 px). Existing students get these when the teacher page (`?page=manage`) is opened once.
+- **Full-resolution photos:** the in-app camera takes a real still photo (often 12 MP on a phone) where the browser supports it, instead of a frame of the live video; after a low-resolution photo the board explains how to get better results.
+- **Recognition model:** four alternatives (faceres, faceres-deep, MobileFaceNet, MobileFace from `@vladmandic/human-models`) were compared with the current face-api network on real faces at 32 / 24 / 18 px; face-api was best at every size (e.g. at 24 px, 92% of registered faces named at a 1-in-1000 false-match rate vs 78% for the best alternative), so it was kept.
+
+Real faces (AT&T, 40 people) shrunk to class-photo sizes and JPEG-compressed, through the app's own pipeline (`scripts/small-face-test.ts`); 20 splits, ~30% unregistered:
+
+| Face width | Before these releases | Previous release | Now |
+|---|---|---|---|
+| 32 px: marked automatically + to confirm | 78% | 59% | 72% |
+| 26 px: right student offered | 61% | 32% | 56% |
+| 22 px: right student offered | 51% | 23% | 48% |
+| 18 px: right student offered | 23% | 8% | 20% |
+| 36 px: marked automatically (`real-face-test.ts`) | – | 83% | 96% |
+| Strangers given a student's name (of 2,400 at 32 px) | 5 | 0 | 9 |
+| Strangers offered "Is this …?" | 12–16% | 2% | 4–7% |
+| Wrong student marked | 0 | 0 | 0 |
+
+Generated look-alike classes: strangers named 1–2 of 360 per scenario (previous release 0–1, before these releases 4–8). Composed 12 MP class photos: 168/186 students marked (previous 164), back row 14/26 (previous 11), 0 wrong, 0 strangers named.
+
+**Best results in class:** use the app's camera on a phone or upload the original photo (not a WhatsApp copy), and for big rooms take two or three photos (left, middle, right) or one closer to the back rows; the head count does not count the same person twice.
+
 ## Startup performance
 
 The attendance screen renders while the current batch loads. One compact snapshot request supplies the roster, sample counts, and saved recognition model; photos and training vectors are omitted. A missing or stale model still loads the training samples through the original endpoint. Camera detection, phone pairing, registration, and batch management load on demand. API responses use gzip when supported and remain uncached.

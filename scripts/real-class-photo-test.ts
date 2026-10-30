@@ -13,6 +13,8 @@ import {recognizeCapture, type DetectedFace, type Observation} from '../src/atte
 // Older versions have no head count; they are scored on students present plus every other face.
 const counting: {headCount?: typeof import('../src/head-count').headCount} = await import('../src/head-count').catch(() => ({}));
 
+// Experiment: EXTRA_REFS=at36 adds registration photos described as seen at 36 px (as CLASS_STYLE_SIZES [80, 36] does).
+const extraRefs = (process.env.EXTRA_REFS ?? '').split(',').filter(Boolean) as ('at48' | 'at36')[];
 type Person = {id: string; photos: ({embedding: number[]; yaw: number} | null)[]; classroom: number[][]};
 type Seat = {person: string; registered: boolean; box: [number, number, number, number]; faceWidth: number};
 const [featuresFile, detectionsFile] = process.argv.slice(2);
@@ -24,7 +26,7 @@ const t = {people: 0, students: 0, strangers: 0, found: 0, readable: 0, falseFac
 for (const photo of photos) {
   const model = buildModel(photo.registered.filter(id => people.has(id)).map(id => {
     const p = people.get(id)!;
-    return {id, faces: p.photos.slice(0, 7).flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])), classroom: p.classroom};
+    return {id, faces: p.photos.slice(0, 7).flatMap(ph => (ph ? [{image: '', vector: [], embedding: ph.embedding, yaw: ph.yaw}] : [])), classroom: [...p.classroom, ...p.photos.slice(0, 7).flatMap(ph => extraRefs.flatMap(k => ((ph as Record<string, unknown> | null)?.[k] ? [(ph as Record<string, number[]>)[k]] : [])))]};
   }), 'class-photo');
   const result: Observation[] = recognizeCapture(model, photo.faces).map(o => ({...o, capture: 1}));
   // Which seat did each detected face come from? (face centre inside the pasted photo)
