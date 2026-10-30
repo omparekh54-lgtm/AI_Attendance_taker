@@ -16,11 +16,13 @@ export function groupTileSizes(w:number,h:number,lowRes=false){
  const sizes:number[]=[],short=Math.min(w,h);
  // A third, finer scale for phone photos (12 MP+), so 35–45 px back-row faces are big enough for the detector.
  for(const size of [Math.round(short/1.5),Math.round(short/2.5),...(short>=2400?[Math.round(short/4)]:[])])if(size>=480&&!sizes.includes(size))sizes.push(size);
- if(lowRes&&short<LOW_RES_SHORT_SIDE)for(const size of [Math.round(short/2),Math.round(short/3)])if(size>=MIN_LOW_RES_TILE&&!sizes.includes(size))sizes.push(size);
+ if(lowRes&&short<LOW_RES_SHORT_SIDE)for(const size of LOW_RES_TILE_DIVISORS.map(n=>Math.round(short/n)))if(size>=MIN_LOW_RES_TILE&&!sizes.includes(size))sizes.push(size);
  return sizes;
 }
 /** Photos whose shorter side is below this get the extra small tiles; smallest such tile (px). */
 export const LOW_RES_SHORT_SIDE=1600, MIN_LOW_RES_TILE=240;
+/** Low-resolution photos are also scanned in tiles of 1/2 and 1/3 of their shorter side (enlarged by the detector). */
+export const LOW_RES_TILE_DIVISORS=[2,3];
 
 /** Face-box sizes (px, as drawn by the detector) for classroom scans. Measured on the 26 real students' unseen photos:
  *  recognition stays 89–97% down to ~22 px boxes with no wrong students, but 1 of 416 unregistered look-alike tests
