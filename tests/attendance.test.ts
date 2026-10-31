@@ -22,3 +22,17 @@ test('A turned or side-view face is only suggested, never marked automatically',
  const side:DetectedFace={face:{image:'',vector:[],embedding:idv(1,19),yaw:0.7},usable:true,box:big,sourceWidth:4000,sourceHeight:3000};
  const front:DetectedFace={face:{image:'',vector:[],embedding:idv(2,19),yaw:0.05},usable:true,box:{...big,x:.6},sourceWidth:4000,sourceHeight:3000};
  const [s,f]=recognizeCapture(idModel,[side,front]);assert.equal(s.studentId,undefined);assert.equal(s.suggestion,'1');assert.match(s.reason!,/Turned/);assert.equal(f.studentId,'2')});
+
+test('A face too uncertain to suggest still shows its closest student as a best guess, and never marks them',()=>{
+ // Move a student-1 face away from student 1 in small steps; somewhere past "suggest" it must become a guess.
+ const u=Array.from({length:128},(_,i)=>Math.sin(i*1.9+.4)),n=Math.sqrt(u.reduce((a,b)=>a+b*b,0));
+ let guessed:ReturnType<typeof recognizeCapture>[number]|undefined;
+ for(let k=0;k<1.5&&!guessed;k+=.01){
+  const emb=idv(1,19).map((x,i)=>x+k*u[i]/n);
+  const [o]=recognizeCapture(idModel,[{face:{image:'',vector:[],embedding:emb},usable:true}]);
+  if(o.guess)guessed=o;
+ }
+ assert.ok(guessed,'a face on the way out should pass through the best-guess zone');
+ assert.equal(guessed!.guess,'1');assert.equal(guessed!.studentId,undefined);assert.equal(guessed!.suggestion,undefined);assert.match(guessed!.reason!,/Best guess/);
+});
+test('A face far from every student gets no guess',()=>{const [o]=recognizeCapture(idModel,[{face:{image:'',vector:[],embedding:Array(128).fill(2)},usable:true}]);assert.equal(o.guess,undefined);assert.equal(o.studentId,undefined);assert.equal(o.reason,'Not recognised')});

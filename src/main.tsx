@@ -151,11 +151,13 @@ function App() {
     if (!startedAt) setStartedAt(new Date().toISOString());
     const matched = new Set(batch.flatMap(o => (o.studentId ? [o.studentId] : []))).size,
       confirm = batch.filter(o => !o.studentId && o.suggestion).length,
-      review = batch.filter(o => !o.studentId && !o.suggestion).length;
+      guesses = batch.filter(o => !o.studentId && !o.suggestion && o.guess).length,
+      review = batch.filter(o => !o.studentId && !o.suggestion && !o.guess).length;
     setNotice([
       kind === 'video' ? `Video: ${faces.length} ${faces.length === 1 ? 'person' : 'people'} found` : `${faces.length} face${faces.length === 1 ? '' : 's'} found`,
       `${matched} recognised`,
       confirm ? `${confirm} to confirm with one tap` : '',
+      guesses ? `${guesses} best guess${guesses === 1 ? '' : 'es'} to check` : '',
       review ? `${review} not recognised (usually unregistered)` : '',
     ].filter(Boolean).join(' · ') + '.' + (kind === 'photo' && lowResolutionPhoto(faces) ? ' ' + LOW_RES_TIP : ''));
   }
@@ -204,8 +206,13 @@ function App() {
   const bestFace = new Map<string, Observation>();
   for (const o of unresolved) if (o.suggestion && (!bestFace.has(o.suggestion) || (o.distance ?? 1) < (bestFace.get(o.suggestion)!.distance ?? 1))) bestFace.set(o.suggestion, o);
   const toConfirm = [...bestFace.values()].sort((a, b) => seenIn.get(b.suggestion!)!.size - seenIn.get(a.suggestion!)!.size || (a.distance ?? 1) - (b.distance ?? 1));
-  const notRecognised = unresolved.filter(o => !o.suggestion);
-  const hiddenRepeats = observations.filter(o => !o.studentId && alreadyCounted(o)).length + unresolved.filter(o => o.suggestion && bestFace.get(o.suggestion) !== o).length;
+  // Best guesses: too uncertain to suggest, but the closest student is shown as a one-tap check (one card per student).
+  const guessable = unresolved.filter(o => !o.suggestion && o.guess && !!byId.get(o.guess) && !isPresent(byId.get(o.guess)!));
+  const bestGuess = new Map<string, Observation>();
+  for (const o of guessable) if (!bestGuess.has(o.guess!) || (o.distance ?? 1) < (bestGuess.get(o.guess!)!.distance ?? 1)) bestGuess.set(o.guess!, o);
+  const toCheck = [...bestGuess.values()].sort((a, b) => (a.distance ?? 1) - (b.distance ?? 1));
+  const notRecognised = unresolved.filter(o => !o.suggestion && !guessable.includes(o));
+  const hiddenRepeats = observations.filter(o => !o.studentId && alreadyCounted(o)).length + unresolved.filter(o => o.suggestion && bestFace.get(o.suggestion) !== o).length + guessable.filter(o => bestGuess.get(o.guess!) !== o).length;
   const howMarked = (s: Student) => (manual[s.id] === true ? 'Marked by teacher' : observations.some(o => o.studentId === s.id && o.confirmed) ? 'Confirmed by teacher' : 'Recognised from photo');
   const searchMatch = (s: Student) => (s.name + ' ' + s.roll).toLowerCase().includes(search.toLowerCase());
 
@@ -334,6 +341,18 @@ function App() {
                   </div>
                 </section>
               )}
+              {toCheck.length > 0 && (
+                <section className="panel review-panel">
+                  <h3>Check these best guesses <span className="badge">{toCheck.length}</span></h3>
+                  <p className="muted">Not sure enough to suggest, but this is the closest student. Look at the face, then tap <b>Yes</b> or pick the right student.</p>
+                  <div className="review-faces">
+                    {toCheck.map(o => (
+                      <ReviewFace key={o.id} observation={o} guess students={students} byId={byId} isPresent={isPresent}
+                        onAssign={id => assign(o.id, id)} onDismiss={() => notAStudent(x => x.id === o.id)} onNotFace={() => notAFace(o.id)}/>
+                    ))}
+                  </div>
+                </section>
+              )}
               {notRecognised.length > 0 && (
                 <details className="panel review-panel other-faces">
                   <summary><b>{notRecognised.length} other face{notRecognised.length === 1 ? '' : 's'} not recognised</b> · usually unregistered students or visitors. Open to name any of them.</summary>
@@ -372,11 +391,11 @@ function App() {
   );
 }
 
-function ReviewFace({observation: o, seenIn = 1, students, byId, isPresent, onAssign, onDismiss, onNotFace}: {
-  observation: Observation; seenIn?: number; students: Student[]; byId: Map<string, Student>; isPresent: (s: Student) => boolean;
+function ReviewFace({observation: o, seenIn = 1, guess = false, students, byId, isPresent, onAssign, onDismiss, onNotFace}: {
+  observation: Observation; seenIn?: number; guess?: boolean; students: Student[]; byId: Map<string, Student>; isPresent: (s: Student) => boolean;
   onAssign: (studentId: string) => void; onDismiss: () => void; onNotFace: () => void;
 }) {
-  const suggested = o.suggestion ? byId.get(o.suggestion) : undefined;
+  const suggested = o.suggestion ? byId.get(o.suggestion) : guess && o.guess ? byId.get(o.guess) : undefined;
   // Closest matches first, then everyone else alphabetically; students already present go last.
   const ranked = [...(o.candidates ?? []).flatMap(id => byId.get(id) ?? []), ...students.filter(s => !o.candidates?.includes(s.id))];
   const options = [...ranked.filter(s => !isPresent(s)), ...ranked.filter(isPresent)];
@@ -385,7 +404,7 @@ function ReviewFace({observation: o, seenIn = 1, students, byId, isPresent, onAs
       <img src={o.image} alt="Face from the classroom photo"/>
       {suggested && !isPresent(suggested) ? (
         <>
-          <p className="suggestion">Is this <strong>{suggested.name}</strong>?{seenIn > 1 && <span className="seen-in">Seen in {seenIn} photos</span>}</p>
+          <p className="suggestion">{guess ? 'Maybe' : 'Is this'} <strong>{suggested.name}</strong>?{seenIn > 1 && <span className="seen-in">Seen in {seenIn} photos</span>}</p>
           <button className="primary" onClick={() => onAssign(suggested.id)}><Check size={16}/>Yes</button>
         </>
       ) : (

@@ -85,7 +85,10 @@ export function predictIdentity(model:IdentityModel,vector:number[],strangers:nu
  const accepted=!stranger&&pcaAgreement&&best.distance<=limit&&ratio<=model.maxRatio&&margin>=model.minMargin;
  // Not safe to mark automatically, but close enough to this student to offer the teacher a one-tap confirmation.
  const suggested=!accepted&&!stranger&&best.distance<=Math.min(SUGGEST.distance,limit+SUGGEST.beyondLimit)&&ratio<=SUGGEST.ratio&&margin>=SUGGEST.margin;
- return {...best,ratio,margin,limit,accepted,suggested,stranger,strangerDistance,pcaAgreement,candidates:scores.slice(0,3).map(s=>s.label)};
+ // Too uncertain even to suggest, but the closest student is still worth showing as a "best guess" for the teacher to
+ // check against the face. Never marks anyone; a face far from every student (a visitor) gets no guess.
+ const guessable=!accepted&&!suggested&&!stranger&&best.distance<=GUESS.distance;
+ return {...best,ratio,margin,limit,accepted,suggested,guessable,stranger,strangerDistance,pcaAgreement,candidates:scores.slice(0,3).map(s=>s.label)};
 }
 /** Per-student limits. `percentile`/`gap`: stay below the closest 2% of classmate distances by 0.03.
  *  `floor`/`ceiling` keep a clear-face limit sane when a student has very few or very unusual photos. `maxCap`: no face
@@ -98,6 +101,11 @@ export const SMALL_FACE={from:48,to:24,extra:.05};
 export const STRANGER_GAP=.03;
 /** Suggestions: at most `beyondLimit` past the student's own limit (and never past `distance`). */
 export const SUGGEST={distance:.5,beyondLimit:.06,ratio:.9,margin:.04};
+
+/** Best guesses: a face not close enough to suggest is still shown with its closest student if within `distance`
+ *  (different people are rarely closer than 0.50 on real photos, so this reaches the look-alike zone: the teacher
+ *  checks the face before tapping). Not tuned on class photos yet. */
+export const GUESS={distance:.6};
 
 /** Six decimals preserve classifier precision and keep shared model writes below 900 KB. */
 export function compactModel<T>(value:T):T{return JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='number'?Math.round(v*1e6)/1e6:v))}
