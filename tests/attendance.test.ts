@@ -36,3 +36,20 @@ test('A face too uncertain to suggest still shows its closest student as a best 
  assert.equal(guessed!.guess,'1');assert.equal(guessed!.studentId,undefined);assert.equal(guessed!.suggestion,undefined);assert.match(guessed!.reason!,/Best guess/);
 });
 test('A face far from every student gets no guess',()=>{const [o]=recognizeCapture(idModel,[{face:{image:'',vector:[],embedding:Array(128).fill(2)},usable:true}]);assert.equal(o.guess,undefined);assert.equal(o.studentId,undefined);assert.equal(o.reason,'Not recognised')});
+
+import {feedbackFor,learnableFaces,feedbackSummary,type Observation} from '../src/attendance';
+const ob=(o:Partial<Observation>):Observation=>({id:Math.random().toString(),image:'',...o});
+test('Feedback says whether the teacher agreed with what the app offered',()=>{
+ assert.equal(feedbackFor({suggestion:'1'},'1'),'right');assert.equal(feedbackFor({guess:'1'},'2'),'wrong');assert.equal(feedbackFor({candidates:['1']},'1'),undefined);
+ assert.deepEqual(feedbackSummary([ob({feedback:'right'}),ob({feedback:'right'}),ob({feedback:'wrong'}),ob({})]),{right:2,wrong:1});
+});
+test('Only faces the teacher confirmed are learned from, hardest first, never automatic marks',()=>{
+ const faces=learnableFaces([
+  ob({studentId:'a',confirmed:true,embedding:[1],distance:.2}),ob({studentId:'a',confirmed:true,embedding:[2],distance:.5}),ob({studentId:'a',confirmed:true,embedding:[3],distance:.3}),ob({studentId:'a',confirmed:true,embedding:[4],distance:.4}),
+  ob({studentId:'b',embedding:[9],distance:.9}),ob({studentId:'c',confirmed:true,distance:.9}),ob({confirmed:true,embedding:[7]})],3);
+ assert.deepEqual(faces,{a:[[2],[4],[3]]});
+});
+test('A roster signature is unchanged until a student has learned faces, then changes',()=>{
+ const f=face(0).face,plain={id:'a',faces:[f]};
+ assert.equal(rosterSignature([plain]),'a:1');assert.notEqual(rosterSignature([plain]),rosterSignature([{...plain,learned:[[1]]}]));
+});

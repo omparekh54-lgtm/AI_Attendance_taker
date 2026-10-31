@@ -9,7 +9,7 @@ export type DetectedFace={sourceWidth?:number;sourceHeight?:number;face:Face;usa
  *  guess: closest student when too uncertain to suggest; shown for the teacher to check, never marks anyone.
  *  embedding: face features, so "Not a student" can remember a face and the head count can recognise one person across photos.
  *  notStudent: the teacher said this is not a student; it stays in the head count but leaves the review list. */
-export type Observation={id:string;image:string;frames?:[number,number];studentId?:string;suggestion?:string;guess?:string;candidates?:string[];reason?:string;distance?:number;confirmed?:boolean;capture?:number;embedding?:number[];notStudent?:boolean};
+export type Observation={id:string;image:string;frames?:[number,number];studentId?:string;suggestion?:string;guess?:string;candidates?:string[];reason?:string;distance?:number;confirmed?:boolean;feedback?:'right'|'wrong';capture?:number;embedding?:number[];notStudent?:boolean};
 const SMALL_SOURCE=240, DUPLICATE_GAP=.05;
 /** Video: share of a person's frames that must point to the same student before they are marked. Strangers tend to
  *  resemble different students in different frames, while a real student stays the same student. */
@@ -71,4 +71,23 @@ export function recheckAgainstStranger(observations:Observation[], stranger:numb
  return observations.map(o=>o.studentId&&!o.confirmed&&o.embedding&&o.distance!==undefined&&d(o.embedding,stranger)<=o.distance+STRANGER_GAP
   ?{...o,studentId:undefined,suggestion:undefined,reason:'Looks like someone marked “Not a student”'}:o);
 }
-export function rosterSignature(students:{id:string;faces:Face[]}[]){return students.map(s=>s.id+':'+s.faces.length).sort().join('|');}
+export function rosterSignature(students:{id:string;faces:Face[];learned?:number[][]}[]){return students.map(s=>s.id+':'+s.faces.length+(s.learned?.length?'+'+s.learned.length:'')).sort().join('|');}
+/** What the teacher's taps say about the model's own guess: 'right' when they confirmed what it offered (its suggestion,
+ *  best guess or closest student), 'wrong' when they named someone else. Faces it offered nothing for are left out. */
+export function feedbackFor(o:Pick<Observation,'suggestion'|'guess'|'candidates'>,studentId:string):'right'|'wrong'|undefined{
+ const offered=o.suggestion??o.guess;if(!offered)return undefined;return offered===studentId?'right':'wrong';
+}
+/** Faces to learn from: only ones the teacher confirmed by hand (never the app's own automatic marks, which would
+ *  just reinforce what it already believes). At most `perStudent` per student, the hardest ones first: faces the model
+ *  was least sure about teach it the most. */
+export function learnableFaces(observations:Observation[],perStudent=3):Record<string,number[][]>{
+ const by=new Map<string,Observation[]>();
+ for(const o of observations)if(o.studentId&&o.confirmed&&o.embedding)by.set(o.studentId,[...(by.get(o.studentId)??[]),o]);
+ const out:Record<string,number[][]>={};
+ for(const [id,list] of by)out[id]=list.sort((a,b)=>(b.distance??0)-(a.distance??0)).slice(0,perStudent).map(o=>o.embedding!);
+ return out;
+}
+/** How the model's offers fared today, from the teacher's taps. */
+export function feedbackSummary(observations:Observation[]){
+ const n=(f:'right'|'wrong')=>observations.filter(o=>o.feedback===f).length;return {right:n('right'),wrong:n('wrong')};
+}

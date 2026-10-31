@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/enrollments', shared.enrollments),
     path('api/enroll', shared.enrollment),
     path('api/side-views', shared.side_views),
+    path('api/learn', shared.learn),
     path('api/config', views.configuration, name='configuration'),
 ]
 

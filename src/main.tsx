@@ -4,12 +4,13 @@ import {classroomFeatures, CLASSROOM_VERSION} from './classroom-features';
 const needsClassFeatures = (s: Student) => !s.classroom?.length || (s.classroomVersion ?? 1) < CLASSROOM_VERSION;
 import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, RefreshCw, RotateCcw, ScanFace, Smartphone, Users} from 'lucide-react';
+import {Brain, Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, RefreshCw, RotateCcw, ScanFace, Smartphone, Users} from 'lucide-react';
+import {api} from './api';
 import {Home} from './home';
 import {CameraCapture} from './camera';
 import {config} from './config';
 import {load, loadAttendance, save, initial, csv, download, type State, type Student} from './store';
-import {recognizeCapture, recheckAgainstStranger, rosterSignature, type DetectedFace, type Observation} from './attendance';
+import {recognizeCapture, recheckAgainstStranger, rosterSignature, feedbackFor, feedbackSummary, learnableFaces, type DetectedFace, type Observation} from './attendance';
 import {loadNotStudents, rememberNotStudents, forgetNotStudents} from './not-students';
 import {headCount} from './head-count';
 import {loadSavedAttendance, saveAttendance, clearSavedAttendance, type SavedAttendance} from './saved-attendance';
@@ -33,7 +34,7 @@ function trainModel(students: Student[], classroom: Sample[] = []): Promise<Mode
     const worker = new Worker(new URL('./train.worker.ts', import.meta.url), {type: 'module'});
     worker.onmessage = e => { worker.terminate(); if (e.data.error) reject(Error(e.data.error)); else resolve(e.data.model); };
     worker.onerror = e => { worker.terminate(); reject(Error(e.message)); };
-    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
+    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, learned: s.learned, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
   });
 }
 
@@ -188,8 +189,24 @@ function App() {
   }
   /** Teacher says which student a face belongs to. */
   function assign(observationId: string, studentId: string) {
-    setObservations(prev => prev.map(o => (o.id === observationId ? {...o, studentId, confirmed: true} : o)));
+    setObservations(prev => prev.map(o => (o.id === observationId ? {...o, studentId, confirmed: true, feedback: feedbackFor(o, studentId)} : o)));
     setManual(m => { const {[studentId]: _, ...rest} = m; return rest; });
+  }
+
+  /** Teacher approves: the faces they confirmed by hand are added to those students' models, so the next class starts
+   *  smarter. Needs teacher sign-in; the server rejects faces that look nothing like the student (a mis-tap). */
+  async function learnFromToday() {
+    const faces = learnableFaces(observations);
+    const count = Object.values(faces).reduce((n, f) => n + f.length, 0);
+    if (!count) { setNotice('Nothing to learn yet. Faces you confirm by tapping Yes or choosing a name are learned; automatic marks are not.'); return; }
+    if (!confirm(`Add ${count} face${count === 1 ? '' : 's'} you confirmed today to ${Object.keys(faces).length} student${Object.keys(faces).length === 1 ? '' : 's'}' recognition? Only face features are saved, not photos.`)) return;
+    await task('Learning from today', async () => {
+      const r = await api<{added: number; skipped: number}>('learn', 'POST', {faces});
+      const fb = feedbackSummary(observations), offered = fb.right + fb.wrong;
+      setNotice(`Learned ${r.added} face${r.added === 1 ? '' : 's'}${r.skipped ? ` (${r.skipped} skipped: too similar to what it already knew, or did not look like that student)` : ''}.` +
+        (offered ? ` Its suggestions were right ${fb.right} of ${offered} times today.` : ''));
+      setState(await readState());
+    });
   }
 
   const recognized = new Set(observations.flatMap(o => (o.studentId ? [o.studentId] : [])));
@@ -310,6 +327,7 @@ function App() {
                 <div className="result-actions">
                   <button disabled={!captures} onClick={exportCsv}><Download size={17}/>Download CSV</button>
                   <button disabled={!captures} onClick={copyAbsent}><ClipboardCopy size={17}/>Copy absent list</button>
+                  <button disabled={!observations.some(o => o.confirmed && o.embedding) || !!busy} onClick={learnFromToday} title="Add the faces you confirmed today to those students' recognition"><Brain size={17}/>Learn from today</button>
                   <button disabled={!captures && !Object.keys(manual).length} onClick={startNew}><RotateCcw size={17}/>Start new attendance</button>
                 </div>
               </div>

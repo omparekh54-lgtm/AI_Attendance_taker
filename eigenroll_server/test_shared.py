@@ -161,3 +161,35 @@ class SideViewTests(SimpleTestCase):
     def test_side_views_must_cover_both_sides(self):
         r,written=self.run_with([self.face(0.001,0.0)]*4+[self.face(0.003,0.6)]*2)
         self.assertEqual(r.status_code,400);self.assertEqual(written,[])
+
+@patch.dict(os.environ,ENV)
+class LearningTests(SimpleTestCase):
+    def post(self,data):return self.client.post('/api/learn',json.dumps(data),content_type='application/json')
+    def login(self):
+        with patch('eigenroll_server.shared.db',return_value=True):
+            self.client.post('/api/auth',json.dumps({'password':'teacher-test-key'}),content_type='application/json')
+    def vec(self,shift=0.0):return [0.1+shift*(i%3==0) for i in range(128)]
+    def row(self,**extra):return [{'id':'students:a','revision':1,'payload':{'faces':[{'embedding':self.vec()}],'classroom':[],**extra}}]
+    def test_learning_needs_teacher_sign_in(self):
+        self.assertEqual(self.post({'faces':{'a':[self.vec()]}}).status_code,401)
+    def test_a_face_that_looks_like_the_student_is_added_and_a_stranger_is_not(self):
+        self.login();calls=[]
+        def fake(path,method='GET',body=None,prefer=None):
+            calls.append((method,body));return self.row() if method=='GET' else [{'revision':2}]
+        near=self.vec(0.05);far=[0.1+2*(i%2) for i in range(128)]
+        with patch('eigenroll_server.shared.db',side_effect=fake):
+            r=self.post({'faces':{'a':[near,far]}}).json()
+        self.assertEqual((r['added'],r['skipped']),(1,1))
+        saved=[b for m,b in calls if m=='PATCH'][0]['payload']['learned'];self.assertEqual(len(saved),1)
+    def test_near_duplicates_teach_nothing_and_the_newest_eight_are_kept(self):
+        self.login()
+        with patch('eigenroll_server.shared.db',return_value=self.row()):
+            r=self.post({'faces':{'a':[self.vec(0.01)]}}).json()
+        self.assertEqual((r['added'],r['skipped']),(0,1))
+        old=[[0.1-0.01*k*(i%3==0) for i in range(128)] for k in range(1,8)]
+        calls=[]
+        def fake(path,method='GET',body=None,prefer=None):
+            calls.append((method,body));return self.row(learned=old) if method=='GET' else [{'revision':2}]
+        with patch('eigenroll_server.shared.db',side_effect=fake):
+            self.post({'faces':{'a':[self.vec(0.05),self.vec(0.07)]}})
+        self.assertEqual(len([b for m,b in calls if m=='PATCH'][0]['payload']['learned']),8)

@@ -180,6 +180,43 @@ def side_views(request):
     if not updated:raise GatewayError('Your registration was being updated at the same moment. Please try again.',409)
     return JsonResponse({'ok':True,'name':p.get('name',''),'message':'Side views added. You can now be recognised when turned to the side.'})
 
+# Faces the teacher confirmed in class photos, added to a student's model. Capped so the saved model stays small.
+MAX_LEARNED=8
+LEARN_PER_CALL=3
+# A confirmed face must still look like the student: further than this from every registered face is a mis-tap.
+LEARN_MAX_DISTANCE=0.55
+# Nearly identical to something the model already has teaches nothing.
+LEARN_MIN_DISTANCE=0.08
+@require_http_methods(['POST'])
+@protected
+def learn(request):
+    """Teacher-approved learning: add faces confirmed in class photos to each student's model (newest kept).
+    Rejects faces that do not look like the student, so one wrong tap cannot poison a model."""
+    if not teacher(request): raise GatewayError('Teacher sign-in required. Sign in on Manage batch, then try again.',401)
+    d=data(request);faces=d.get('faces')
+    if not isinstance(faces,dict) or not 1<=len(faces)<=200: raise ValueError()
+    added=skipped=0
+    for sid,vectors in faces.items():
+        if not isinstance(sid,str) or len(sid)>100 or not isinstance(vectors,list) or len(vectors)>LEARN_PER_CALL: raise ValueError()
+        if not all(valid_features(v) for v in vectors): raise GatewayError('Invalid face features.',400)
+        rows=db(query('eigenroll_entities',id='eq.students:'+sid,kind='eq.students',select='id,payload,revision'))
+        if not rows: skipped+=len(vectors);continue
+        row=rows[0];p=row['payload']
+        known=[f['embedding'] for f in p.get('faces',[]) if valid_features(f.get('embedding'))]
+        learned=[v for v in p.get('learned',[]) if valid_features(v)]
+        if not known: skipped+=len(vectors);continue
+        for v in vectors:
+            nearest_known=min(distance(v,k) for k in known)
+            nearest_any=min(distance(v,k) for k in known+learned+[x for x in p.get('classroom',[]) if valid_features(x)])
+            if nearest_known>LEARN_MAX_DISTANCE or nearest_any<LEARN_MIN_DISTANCE: skipped+=1;continue
+            learned.append(r5(v));added+=1
+        learned=learned[-MAX_LEARNED:]
+        if learned==p.get('learned',[]): continue
+        stamp=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+        updated=db(query('eigenroll_entities',id='eq.'+row['id'],revision='eq.'+str(int(row['revision']))),'PATCH',{'payload':{**p,'learned':learned,'learnedAt':stamp},'revision':int(row['revision'])+1,'updated_at':stamp},'return=representation')
+        if not updated: raise GatewayError('A student record changed at the same moment. Press Learn again.',409)
+    return JsonResponse({'added':added,'skipped':skipped})
+
 @require_http_methods(['GET','POST'])
 @protected
 def enrollment(request):
@@ -223,7 +260,8 @@ def attendance(request):
             p=row['payload']
             students.append({k:p[k] for k in ('id','name','roll','classId')}|{
                 'faces':[{'image':'','vector':[],**({'embedding':r5(f['embedding'])} if f.get('embedding') else {})} for f in p.get('faces',[])],
-                'classroom':[r5(v) for v in p.get('classroom',[])]})
+                'classroom':[r5(v) for v in p.get('classroom',[])],
+                'learned':[r5(v) for v in p.get('learned',[]) if valid_features(v)]})
         if len(rows)<100:break
         offset+=100
     result=JsonResponse({'classes':[{'id':'classroom','name':'BTI DS 2022 - 28'}],'students':students,'models':{},'sessions':[]},json_dumps_params={'separators':(',',':')})

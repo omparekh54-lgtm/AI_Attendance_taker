@@ -11,3 +11,8 @@ test('Missing face features are reported instead of building a broken model',()=
 test('The board builds recognition from features alone, including class-photo features, with no photos',()=>{
  const roster=[0,1,2].map(l=>({id:'s'+l,classroom:[emb(l,77)],faces:Array.from({length:10},(_,j)=>({image:'',vector:[] as number[],embedding:emb(l,j)}))}));
  const m=buildModel(roster,rosterSignature(roster));assert.equal(m.identity!.templates.filter(t=>t.label==='s2').length,9);assert.equal(m.version,'identity-only');assert.equal(predictIdentity(m.identity!,emb(2,40)).label,'s2')});
+test('Faces learned from the teacher join that student’s gallery',()=>{
+ const learned=[emb(0,70),emb(0,71)],withLearned=students.map(s=>s.id==='s0'?{...s,learned}:s);
+ const m=buildModel(withLearned,rosterSignature(withLearned));
+ assert.equal(m.identity!.templates.filter(t=>t.label==='s0').length,8+2);assert.equal(m.rosterSignature,'s0:10+2|s1:10|s2:10');
+});
