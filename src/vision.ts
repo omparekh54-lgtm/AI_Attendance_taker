@@ -162,9 +162,9 @@ export async function describeDetection(frame: HTMLCanvasElement, d: Detection, 
   const usable = box.width >= minSide && box.height >= minSide && std > 0.045 && (arc || sharp / 484 > 0.0005);
   const face: Face = {image: crop.toDataURL('image/jpeg', 0.8), vector: gray.map(v => (v - mean) / Math.max(std, 0.05))};
   if (usable && arc && !options.skipFeatures) {
-    const {alignFace, arcEmbed, yawFromKeypoints} = await import('./arcface');
+    const {arcFeaturesFor, yawFromKeypoints} = await import('./arcface');
     const kps = points.map(p => [p.x * w, p.y * h] as [number, number]);
-    face.embedding = (await arcEmbed([alignFace(frame, kps)]))[0];
+    face.embedding = (await arcFeaturesFor(frame, [{x: box.originX, y: box.originY, w: box.width, h: box.height, kps}]))[0];
     face.yaw = Math.round(yawFromKeypoints(kps) * 1000) / 1000;
   } else if (usable && !arc) {
     const sharpCrop = identityCrop(frame, cx, cy, size, angle, !!options.tight);
@@ -191,14 +191,17 @@ export async function detect(source: Source, options: {group?: boolean; onProgre
 
 /** ArcFace: thumbnails first, then every face's features in batches (much faster than one at a time). */
 async function describeArcBatch(frame: HTMLCanvasElement, found: Detection[], onProgress?: ScanProgress): Promise<DetectedFace[]> {
-  const {alignFace, arcEmbed, yawFromKeypoints} = await import('./arcface');
+  const {arcFeaturesFor, yawFromKeypoints} = await import('./arcface');
   const faces = await Promise.all(found.map(d => describeDetection(frame, d, {classroom: true, skipFeatures: true})));
   const readable = faces.flatMap((f, i) => (f.usable ? [i] : []));
   for (let k = 0; k < readable.length; k += 8) {
     onProgress?.(0.7 + 0.3 * k / readable.length, 'Recognising students');
-    const part = readable.slice(k, k + 8), kps = part.map(i => found[i].keypoints.map(p => [p.x * frame.width, p.y * frame.height] as [number, number]));
-    const vectors = await arcEmbed(kps.map(points => alignFace(frame, points)));
-    part.forEach((i, j) => { faces[i].face.embedding = vectors[j]; faces[i].face.yaw = Math.round(yawFromKeypoints(kps[j]) * 1000) / 1000; });
+    const part = readable.slice(k, k + 8), boxes = part.map(i => {
+      const b = found[i].boundingBox;
+      return {x: b.originX, y: b.originY, w: b.width, h: b.height, kps: found[i].keypoints.map(p => [p.x * frame.width, p.y * frame.height] as [number, number])};
+    });
+    const vectors = await arcFeaturesFor(frame, boxes);
+    part.forEach((i, j) => { faces[i].face.embedding = vectors[j]; faces[i].face.yaw = Math.round(yawFromKeypoints(boxes[j].kps) * 1000) / 1000; });
   }
   return faces;
 }

@@ -40,7 +40,7 @@ r5=lambda v:[round(x,5) for x in v]
 MAX_CLASSROOM=24
 # ArcFace features (src/arcface.ts packFeature): "scale:base64(512 int8)". About 690 characters each.
 ARC_FEATURE=re.compile(r'^[0-9.eE+-]{1,16}:[A-Za-z0-9+/]{683}=$')
-MAX_ARC=60
+MAX_ARC=80
 def valid_packed(s):
     if not isinstance(s,str) or not ARC_FEATURE.match(s): return False
     try: return math.isfinite(float(s.split(':')[0])) and len(base64.b64decode(s.split(':')[1]))==512

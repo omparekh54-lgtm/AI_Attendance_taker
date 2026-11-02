@@ -53,3 +53,22 @@ supported by onnxruntime-web and drifted more (0.955 on noise).
 
 Using the 16 most varied crops per student (chosen with their existing features) instead of all of them lowered the
 best scores in the photos by about 0.015 on average and changed no confident match.
+
+## Far faces: labelled test and steps 1–2 (2 November 2026, afternoon)
+
+Every face in both photos was labelled by hand (20 registered students, 16 teachers/guests, no registered student
+missed by the detector). Baseline with the app as deployed: 17 of 20 students marked, 2 offered to confirm, 1 missed,
+0 wrong names, 0 teachers/guests named or offered. The app's first choice was the right student for all 20; the three
+not marked were 19–24 px wide and scored 0.33–0.35 against bars of 0.36. The highest teacher/guest score was 0.295.
+
+Experiments (Python prototype mirroring the app; relative changes):
+
+| Change | Effect on the hard far faces | Kept |
+|---|---|---|
+| Landmarks measured again on a 3× enlarged crop (faces < 40 px) | lead of the hardest face 0.059 → 0.074 (now offered); others ±0.01 | yes |
+| Jittered reading (8–16 shifted/scaled/rotated reads averaged) | ±0.005, no decision changed | no (slower, no gain) |
+| Gallery + 18 px copies | Aagam 0.33 → 0.40, marked; teacher/guest max 0.29 → 0.32, still below every bar | yes |
+| Gallery: 24/18 px with blur | mixed (one student down to 0.36) | no |
+| Gallery: WhatsApp-style double JPEG | mixed | no |
+| Gallery: darker/brighter copies | one student lost its lead | no |
+| Gallery: all crops instead of 16 | ≈ no change | no |

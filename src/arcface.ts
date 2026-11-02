@@ -47,9 +47,9 @@ export type ArcBox = {x: number; y: number; w: number; h: number; score: number;
 // ---------------------------------------------------------------- detection
 const DET = {input: 640, threshold: 0.4, nms: 0.4, strides: [8, 16, 32], anchors: 2};
 
-/** SCRFD on one square input: the canvas is fitted into 640×640 (top-left, padded). Boxes in canvas pixels. */
-async function detectOnce(source: HTMLCanvasElement, threshold: number): Promise<ArcBox[]> {
-  const S = DET.input, scale = Math.min(S / source.width, S / source.height);
+/** SCRFD on one square input: the canvas is fitted into S×S (top-left, padded). Boxes in canvas pixels. */
+async function detectOnce(source: HTMLCanvasElement, threshold: number, S = DET.input): Promise<ArcBox[]> {
+  const scale = Math.min(S / source.width, S / source.height);
   const c = document.createElement('canvas'); c.width = c.height = S;
   const x = c.getContext('2d', {willReadFrequently: true})!;
   x.fillStyle = '#000'; x.fillRect(0, 0, S, S); x.imageSmoothingQuality = 'high';
@@ -201,6 +201,35 @@ export async function landmarksInCrop(image: HTMLImageElement | HTMLCanvasElemen
   if (!found.length) return undefined;
   const best = found.reduce((p, q) => (q.w * q.h * q.score > p.w * p.h * p.score ? q : p));
   return {canvas: c, kps: best.kps};
+}
+
+// ---------------------------------------------------------------- features for faces in a photo
+/** Faces narrower than this (px) get their landmarks measured again on an enlarged crop before alignment. */
+export const REFINE_BELOW_PX = 40;
+
+/** Landmarks of a small face measured again on a crop 3× its size, enlarged so the face is ~110 px wide. At ~20 px the
+ *  whole-photo scan places the eyes and nose a pixel or two off, which skews the alignment. On the labelled class photos
+ *  this raised the lead of the hardest far face from 0.059 to 0.074 (research/arcface-class-photos.md). */
+export async function refineLandmarks(frame: HTMLCanvasElement, f: Pick<ArcBox, 'x' | 'y' | 'w' | 'h' | 'kps'>): Promise<[number, number][]> {
+  const size = Math.max(f.w, f.h), side = size * 3, zoom = 110 / size, S = Math.round(side * zoom);
+  const cx = f.x + f.w / 2, cy = f.y + f.h / 2, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d')!; x.imageSmoothingQuality = 'high';
+  x.drawImage(frame, cx - side / 2, cy - side / 2, side, side, 0, 0, S, S);
+  const found = await detectOnce(c, 0.3, Math.ceil(S / 32) * 32);
+  if (!found.length) return f.kps;
+  const best = found.reduce((p, q) => (Math.hypot(q.x + q.w / 2 - S / 2, q.y + q.h / 2 - S / 2) < Math.hypot(p.x + p.w / 2 - S / 2, p.y + p.h / 2 - S / 2) ? q : p));
+  // Only trust a face found where the original one was (a neighbour in the crop must not take over).
+  if (Math.hypot(best.x + best.w / 2 - S / 2, best.y + best.h / 2 - S / 2) > S / 6) return f.kps;
+  return best.kps.map(([px, py]) => [cx - side / 2 + px / zoom, cy - side / 2 + py / zoom] as [number, number]);
+}
+
+/** Identity features for faces found in a photo: small faces get sharper landmarks first; read in batches of 8. */
+export async function arcFeaturesFor(frame: HTMLCanvasElement, faces: Pick<ArcBox, 'x' | 'y' | 'w' | 'h' | 'kps'>[]): Promise<number[][]> {
+  const points: [number, number][][] = [];
+  for (const f of faces) points.push(Math.min(f.w, f.h) < REFINE_BELOW_PX ? await refineLandmarks(frame, f) : f.kps);
+  const out: number[][] = [];
+  for (let k = 0; k < faces.length; k += 8) out.push(...await arcEmbed(points.slice(k, k + 8).map(p => alignFace(frame, p))));
+  return out;
 }
 
 // ---------------------------------------------------------------- compact storage
