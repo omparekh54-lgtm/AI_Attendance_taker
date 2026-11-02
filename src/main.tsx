@@ -292,7 +292,7 @@ function App() {
         {error && <div className="alert error" role="alert">{error}{!loaded && <button onClick={() => location.reload()}>Retry</button>}</div>}
         {busy && <div className="alert" role="status"><LoaderCircle size={18} className="spin"/>{busy}…</div>}
         {notice && <div className="alert success" role="status">{notice}</div>}
-        {loaded && !management && students.length >= 2 && !allHaveArc(students) && <div className="alert" role="status">Using the older recognition: {students.filter(s => !s.arc?.length).length} student{students.filter(s => !s.arc?.length).length === 1 ? '' : 's'} still need the new face features. Open the teacher page once to prepare them.</div>}
+        {loaded && !management && students.length >= 2 && !allHaveArc(students) && <div className="alert" role="status">Using the older recognition: {students.filter(s => !s.arc?.length).length} student{students.filter(s => !s.arc?.length).length === 1 ? '' : 's'} still need the new face features.<button onClick={() => { location.href = '/?page=manage'; }} disabled={!!busy}>Prepare them now</button></div>}
 
         {management && loaded ? (
           <>
