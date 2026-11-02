@@ -13,7 +13,10 @@ import type * as Ort from 'onnxruntime-web/wasm';
 
 export const ARC_EXTRACTOR = 'arcface-r50-webface600k-v1';
 export const ARC_DIMENSIONS = 512;
-const base = () => `${import.meta.env.BASE_URL}models/arc/`;
+/** The model files (61 MB) are kept in the repository under models/arc but outside the web build, which would otherwise
+ *  exceed Vercel's 250 MB limit. Browsers load them from GitHub at a fixed tag (CORS allowed, cached by the browser). */
+export const ARC_MODELS_TAG = 'arc-models-v1';
+const base = () => (import.meta.env.VITE_ARC_MODELS as string | undefined) ?? `https://raw.githubusercontent.com/omparekh54-lgtm/AI_Attendance_taker/${ARC_MODELS_TAG}/models/arc/`;
 
 let runtime: Promise<typeof Ort> | undefined;
 let detector: Promise<Ort.InferenceSession> | undefined;

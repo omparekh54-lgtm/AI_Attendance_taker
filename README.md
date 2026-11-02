@@ -22,7 +22,7 @@ Class photos and videos are now read by a modern face engine, with the project's
 
 1. **Find faces:** SCRFD-10G (InsightFace) over the whole photo plus overlapping tiles (enlarged 2× for photos up to 2000 px), each face with 5 landmarks.
 2. **Align:** each face is rotated and scaled onto ArcFace's 112×112 template using the eyes, nose and mouth corners.
-3. **Describe:** ArcFace ResNet-50 (WebFace600K) gives 512 identity numbers per face, averaged with the mirror image. The model runs in the browser (onnxruntime-web); photos never leave the device. It is shipped with 8-bit weights (44 MB instead of 174 MB; features within cosine 0.9997 of the full model).
+3. **Describe:** ArcFace ResNet-50 (WebFace600K) gives 512 identity numbers per face, averaged with the mirror image. The model runs in the browser (onnxruntime-web); photos never leave the device. It is shipped with 8-bit weights (44 MB instead of 174 MB; features within cosine 0.9997 of the full model). The model files live in `models/arc` and are loaded by the browser from GitHub at the tag `arc-models-v1` (they would push the Vercel build past its 250 MB limit); to change them, commit new files and a new tag, then update `ARC_MODELS_TAG` in `src/arcface.ts`.
 4. **Decide:** a face's score for a student is its similarity to that student's gallery: 16 registration crops, each also shrunk to how it looks 36 px and 24 px wide in a class photo. A student is marked when
    - the score clears **that student's own bar**, set just above how close their nearest classmates come (look-alike pairs get a higher bar; between 0.36 and 0.52),
    - it leads the next student by at least 0.10,

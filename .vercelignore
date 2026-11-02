@@ -1,0 +1,3 @@
+# Face models are loaded by browsers from GitHub (see src/arcface.ts); keep them out of the deployment.
+models/
+research/
