@@ -96,3 +96,13 @@ test('A full class (27 students × 64 features) trains without overflowing the c
   assert.equal(Object.keys(m.accept).length, 27);
   assert.equal(predictArc(m, sample(25, 99)).label, 'B5');
 });
+
+test('A new student without ArcFace features does not switch the class back to the older engine', () => {
+  const roster = students.map(s => ({...s, faces: [], arc: s.arc.map(packFeature)}));
+  const withNewcomer = [...roster, {id: 'NEW', faces: [], arc: undefined}];
+  const model = buildModel(withNewcomer as typeof roster, 'sig');
+  assert.ok(model.arc, 'still the ArcFace engine');
+  const face = (e: number[]) => ({face: {image: '', vector: [], embedding: e}, usable: true, box: {x: 0, y: 0, w: 0.1, h: 0.1}, sourceWidth: 1000, sourceHeight: 1000});
+  const out = recognizeCapture(model, [face(sample(2, 70))]);
+  assert.equal(out[0].studentId, 'S2');
+});

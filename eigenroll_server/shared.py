@@ -292,7 +292,14 @@ def enrollment(request):
 @protected
 def attendance(request):
     """Current roster for the attendance board: names, SAP IDs and face features. Enrolment photos never leave the server."""
-    if request.GET.get('kind','snapshot')!='snapshot': raise ValueError()
+    # Names, SAP IDs and face features are biometric data: only a signed-in teacher (the board) may read them.
+    if not teacher(request): raise GatewayError('Teacher sign-in required.',401)
+    kind=request.GET.get('kind','snapshot')
+    if kind=='roster':
+        # A few bytes per student so an open board can notice new registrations every minute without reloading features.
+        rows=db(query('eigenroll_entities',select='id,v:payload->>arcVersion',order='id',limit=1000,kind='eq.students',**{'payload->>classId':'eq.classroom'}))
+        result=JsonResponse({'roster':[r['id'].split(':',1)[-1]+':'+(r.get('v') or '') for r in rows]});result['Cache-Control']='no-store';return result
+    if kind!='snapshot': raise ValueError()
     students=[];offset=0
     while True:
         rows=db(query('eigenroll_entities',select='payload',order='id',limit=100,offset=offset,kind='eq.students',**{'payload->>classId':'eq.classroom'}))

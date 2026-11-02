@@ -84,7 +84,18 @@ class SharedSecurityTests(SimpleTestCase):
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face(False) for _ in range(20)]}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[9.0]*128]}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,{**base,'faces':[self.face() for _ in range(20)],'classroom':[[0.0]*128]*25}).status_code,400)
-    def test_attendance_board_needs_no_key_and_never_sends_photos(self):
+    def test_attendance_roster_needs_teacher_sign_in(self):
+        with patch('eigenroll_server.shared.db',return_value=[]) as db:
+            self.assertEqual(self.client.get('/api/attendance?kind=snapshot').status_code,401)
+            self.assertEqual(self.client.get('/api/attendance?kind=roster').status_code,401)
+        self.assertEqual(db.call_count,0)
+    def test_roster_check_lists_ids_and_arcface_version_only(self):
+        self.login()
+        with patch('eigenroll_server.shared.db',return_value=[{'id':'students:a','v':'2'},{'id':'students:b','v':None}]) as db:
+            r=self.client.get('/api/attendance?kind=roster')
+        self.assertEqual(r.json(),{'roster':['a:2','b:']});self.assertIn('payload-%3E%3EclassId=eq.classroom',db.call_args.args[0])
+    def test_attendance_board_never_sends_photos(self):
+        self.login()
         student={'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[{'image':'private-photo','vector':[1.0]*576,'embedding':[0.123456789]*128}]*20,'classroom':[[0.2]*128]*8}
         with patch('eigenroll_server.shared.db',return_value=[{'payload':student}]) as db:
             r=self.client.get('/api/attendance?kind=snapshot')
@@ -94,7 +105,7 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertEqual(len(s['classroom']),8);self.assertEqual(r['Cache-Control'],'no-store')
         self.assertEqual(self.client.get('/api/attendance?kind=students').status_code,400)
         self.assertEqual(self.post('/api/attendance',{}).status_code,405)
-        self.assertEqual(self.post('/api/workspace',{}).status_code,401)
+        self.client.cookies.clear();self.assertEqual(self.post('/api/workspace',{}).status_code,401)
     def test_arcface_features_are_validated_stored_and_sent_to_the_board(self):
         from .shared import pack
         token=signing.dumps({'classId':'classroom'},salt='enrollment');written=[]
@@ -110,6 +121,7 @@ class SharedSecurityTests(SimpleTestCase):
             self.assertEqual(self.post('/api/enroll?invite='+token,{**payload,'arc':['1:'+'A'*10]*10}).status_code,400)
             self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,201)
         stored=written[-1]['payload'];self.assertEqual(len(stored['arc']),36);self.assertEqual(stored['arcFaces'],20)
+        self.login()
         with patch('eigenroll_server.shared.db',return_value=[{'payload':{**stored,'arcLearned':[arc[0]]}}]):
             s=self.client.get('/api/attendance?kind=snapshot').json()['students'][0]
         self.assertEqual(len(s['arc']),36);self.assertEqual(s['arcLearned'],[arc[0]]);self.assertNotIn('image',json.dumps(s).replace('"image": ""',''))
@@ -130,6 +142,7 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertGreater(sum(a*b for a,b in zip(unpack(patched[0]['payload']['arcLearned'][0]),close)),0.999)
     def test_attendance_snapshot_pages_without_truncating_the_roster(self):
         row={'payload':{'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[]}}
+        self.login()
         with patch('eigenroll_server.shared.db',side_effect=[[row]*100,[row]]) as db:
             response=self.client.get('/api/attendance?kind=snapshot')
         self.assertEqual(len(response.json()['students']),101)

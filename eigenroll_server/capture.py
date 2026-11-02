@@ -53,9 +53,10 @@ def phone(request):
     except (signing.BadSignature,KeyError):raise GatewayError('Invalid or expired phone link. Scan a new QR code.',410)
     row=active(ident)
     if request.method=='GET':
-        # The phone describes faces with the same engine as the board: ArcFace once every student has ArcFace features.
-        legacy=db(query('eigenroll_entities',select='id',kind='eq.students',limit=1,**{'payload->>classId':'eq.classroom','payload->>arcVersion':'is.null'}))
-        return response({'batch':'BTI DS 2022 - 28','waiting':row.get('payload') is not None,'engine':'faceapi' if legacy else 'arc'})
+        # The phone describes faces with the same engine as the board: ArcFace once two students have ArcFace features
+        # (src/build-model.ts useArcEngineFor). A new student without them is prepared by the board, not a reason to fall back.
+        ready=db(query('eigenroll_entities',select='id',kind='eq.students',limit=2,**{'payload->>classId':'eq.classroom','payload->>arcVersion':'not.is.null'}))
+        return response({'batch':'BTI DS 2022 - 28','waiting':row.get('payload') is not None,'engine':'arc' if len(ready or [])>=2 else 'faceapi'})
     limit(request,'phone-capture',120)
     # A full classroom photo or video can hold 60+ faces; the pixel vector is optional because the board recognises from identity features.
     d=data(request,PHONE_MAX_BYTES,'This capture is too large to send. Take two photos of the class instead.');faces=d.get('faces')

@@ -43,10 +43,11 @@ class PhoneCaptureTests(SimpleTestCase):
         stored=db.call_args.args[2]['payload']['faces'][0]
         self.assertEqual(stored['frames'],[2,9]);self.assertEqual(stored['face']['vector'],[])
     def test_phone_uses_the_boards_engine_and_sends_arcface_features(self):
-        with patch('eigenroll_server.capture.db',side_effect=[[self.session],[{'id':'students:old'}]]):
+        with patch('eigenroll_server.capture.db',side_effect=[[self.session],[{'id':'students:a'}]]):
             self.assertEqual(self.client.get(self.path).json()['engine'],'faceapi')
-        with patch('eigenroll_server.capture.db',side_effect=[[self.session],[]]):
+        with patch('eigenroll_server.capture.db',side_effect=[[self.session],[{'id':'students:a'},{'id':'students:b'}]]) as db:
             self.assertEqual(self.client.get(self.path).json()['engine'],'arc')
+        self.assertIn('not.is.null',db.call_args.args[0])
         face={'face':{'image':'data:image/jpeg;base64,eA==','vector':[],'embedding':[0.044]*512},'usable':True}
         with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[self.session]]):
             self.assertEqual(self.post(self.path,{'faces':[face]*60}).status_code,200)

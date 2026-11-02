@@ -2,7 +2,7 @@ import {IDENTITY_EXTRACTOR, IDENTITY_RULES} from './identity';
 import {describeFaceDataUrl} from './embeddings';
 import {classroomFeatures, CLASSROOM_VERSION} from './classroom-features';
 import {ARC_RULES} from './arc-identity';
-import {allHaveArc} from './build-model';
+import {hasArc} from './build-model';
 import {useArcEngine} from './engine';
 import {ARC_VERSION} from './arc-gallery';
 const needsClassFeatures = (s: Student) => !s.classroom?.length || (s.classroomVersion ?? 1) < CLASSROOM_VERSION;
@@ -57,7 +57,10 @@ function App() {
     [observations, setObservations] = useState<Observation[]>([]),
     [manual, setManual] = useState<Record<string, boolean>>({}),
     [startedAt, setStartedAt] = useState(''),
-    [notStudents, setNotStudents] = useState<number[][]>(() => loadNotStudents());
+    [notStudents, setNotStudents] = useState<number[][]>(() => loadNotStudents()),
+    // New registrations whose phone could not prepare ArcFace features: the board prepares them itself.
+    [arcWork, setArcWork] = useState(''),
+    [arcFailed, setArcFailed] = useState<{name: string; reason: string}[]>([]);
   const results = useRef<HTMLElement>(null), lock = useRef(false), currentModel = useRef<Model | undefined>(undefined), restored = useRef(false), captureCounter = useRef(0);
 
   const students = useMemo(() => state.students.filter(s => s.classId === BATCH_ID).sort((a, b) => a.name.localeCompare(b.name)), [state.students]);
@@ -164,6 +167,50 @@ function App() {
     attempted.current = signature;
     void train();
   }, [loaded, students, validModel]);
+
+  // Board: prepare ArcFace features for anyone who registered without them, then reload the roster so they are
+  // recognised straight away. The teacher sign-in the board already has is enough; no approval step.
+  const arcTried = useRef(new Set<string>());
+  const needArcIds = students.filter(s => !hasArc(s) || (s.arcVersion ?? 0) < ARC_VERSION).map(s => s.id);
+  useEffect(() => {
+    if (!loaded || management || !config.sharedStorage || arcWork) return;
+    const todo = needArcIds.filter(id => !arcTried.current.has(id));
+    if (!todo.length) return;
+    todo.forEach(id => arcTried.current.add(id));
+    setArcWork(`Preparing recognition for ${todo.length} newly registered student${todo.length === 1 ? '' : 's'}`);
+    (async () => {
+      try {
+        const {prepareMissingArc} = await import('./prepare-arc');
+        const result = await prepareMissingArc(new Set(todo), setArcWork);
+        setArcFailed(f => [...f, ...result.failed]);
+        if (result.ready.length) {
+          setState(await readState());
+          setNotice(`${result.ready.length} newly registered student${result.ready.length === 1 ? ' is' : 's are'} now recognised.`);
+        }
+      } catch (e) { setArcFailed(f => [...f, {name: `${todo.length} student${todo.length === 1 ? '' : 's'}`, reason: (e as Error).message}]); }
+      finally { setArcWork(''); }
+    })();
+  }, [loaded, needArcIds.join()]);
+
+  // Board: notice new registrations while it stays open. A tiny id list is checked every minute; the full roster is
+  // reloaded only when it changed, and recognition then rebuilds automatically (the roster signature changes).
+  const rosterKey = students.map(s => `${s.id}:${s.arcVersion ?? ''}`).sort().join();
+  useEffect(() => {
+    if (!loaded || management || !config.sharedStorage) return;
+    const check = async () => {
+      if (document.hidden || lock.current) return;
+      try {
+        const r = await api<{roster: string[]}>('attendance?kind=roster');
+        if ([...r.roster].sort().join() === rosterKey) return;
+        const next = await readState(), added = next.students.length - state.students.length;
+        setState(s => ({...next, models: s.models}));
+        if (added > 0) setNotice(`${added} new student${added === 1 ? '' : 's'} registered and added to this class.`);
+      } catch { /* offline for a moment: try again next minute */ }
+    };
+    const timer = setInterval(check, 60_000);
+    document.addEventListener('visibilitychange', check);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', check); };
+  }, [loaded, rosterKey]);
 
   function receive(faces: DetectedFace[], kind: 'photo' | 'video' = 'photo') {
     const active = currentModel.current;
@@ -292,7 +339,8 @@ function App() {
         {error && <div className="alert error" role="alert">{error}{!loaded && <button onClick={() => location.reload()}>Retry</button>}</div>}
         {busy && <div className="alert" role="status"><LoaderCircle size={18} className="spin"/>{busy}…</div>}
         {notice && <div className="alert success" role="status">{notice}</div>}
-        {loaded && !management && students.length >= 2 && !allHaveArc(students) && <div className="alert" role="status">Using the older recognition: {students.filter(s => !s.arc?.length).length} student{students.filter(s => !s.arc?.length).length === 1 ? '' : 's'} still need the new face features.<button onClick={() => { location.href = '/?page=manage'; }} disabled={!!busy}>Prepare them now</button></div>}
+        {!management && arcWork && <div className="alert" role="status"><LoaderCircle size={18} className="spin"/>{arcWork}…</div>}
+        {!management && !arcWork && arcFailed.length > 0 && <div className="alert error" role="alert">Not recognised yet: {arcFailed.map(f => `${f.name} (${f.reason})`).join('; ')}. Everyone else is recognised as normal.</div>}
 
         {management && loaded ? (
           <>
