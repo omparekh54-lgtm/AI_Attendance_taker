@@ -16,6 +16,34 @@ The active class ID is `classroom`, displayed as **BTI DS 2022 - 28**. Submitted
 
 The home page offers **Take attendance** (`?page=attendance`) and **Student registration** (`?page=register`); neither asks for a key. Registration saves the student straight into the roster and computes their class-photo features on their own device, and the board rebuilds its recognition model from the roster each time it opens (about a second), so a new student is recognised from the next capture. The board receives names, SAP IDs and face features but never enrolment photos. The teacher page (`?page=manage`, not linked from the home page) still asks for the key; opening it once fills in class-photo features for students registered before they existed.
 
+## Recognition engine (ArcFace + PCA/LDA, November 2026)
+
+Class photos and videos are now read by a modern face engine, with the project's own PCA + LDA on top:
+
+1. **Find faces:** SCRFD-10G (InsightFace) over the whole photo plus overlapping tiles (enlarged 2× for photos up to 2000 px), each face with 5 landmarks.
+2. **Align:** each face is rotated and scaled onto ArcFace's 112×112 template using the eyes, nose and mouth corners.
+3. **Describe:** ArcFace ResNet-50 (WebFace600K) gives 512 identity numbers per face, averaged with the mirror image. The model runs in the browser (onnxruntime-web); photos never leave the device. It is shipped with 8-bit weights (44 MB instead of 174 MB; features within cosine 0.9997 of the full model).
+4. **Decide:** a face's score for a student is its similarity to that student's gallery: 16 registration crops, each also shrunk to how it looks 36 px and 24 px wide in a class photo. A student is marked when
+   - the score clears **that student's own bar**, set just above how close their nearest classmates come (look-alike pairs get a higher bar; between 0.36 and 0.52),
+   - it leads the next student by at least 0.10,
+   - the from-scratch **PCA (64 components) + LDA** projection agrees on who it is, and
+   - the face is at least 16 px wide.
+   Slightly weaker matches are offered as "Is this …?"; faces that do not clearly lean to one student are shown as **Not registered** rather than as a guess.
+5. **One student, one face:** in a photo, faces are given to students jointly with the **Hungarian algorithm**, so a look-alike standing next to a student does not get the same name.
+
+**Results on the class's own photos** (two WhatsApp copies, 1280×960, with teachers and guests in them; `research/arcface-class-photos.md`):
+
+| | Previous engine | ArcFace engine |
+|---|---|---|
+| Photo 1 (19 people, faces 18–30 px): marked / to confirm / best guesses | 0 / 3 / 16 | **8 / 2 / 0** |
+| Photo 2 (~20 people, faces 28–53 px): marked / to confirm / best guesses | 3 / 0 / 15 | **9 / 0 / 0** |
+
+Matched students scored 0.35–0.71; every unregistered person stayed at or below 0.29.
+
+**Switching over:** the board uses the ArcFace engine once every student has ArcFace features, and the older engine until then (it says so on screen). New registrations compute them on the student's phone. For students registered earlier, open the teacher page (`?page=manage`) once: it prepares them from the stored registration crops. This took about 13 minutes for 27 students on a slow test machine; a laptop is faster. Each student's features take about 33 KB.
+
+The pretrained InsightFace models are licensed for non-commercial research use (see `THIRD_PARTY_NOTICES.md`). The sections below describe the earlier face-api engine and its tests.
+
 ## Recognition and limitations
 
 Classroom photos use a group face detector (SSD MobileNet v1 from the pinned face-api package) that scans the full frame and two scales of overlapping tiles, so small back-row faces are found. MediaPipe's short-range BlazeFace, which only sees faces near the camera, is still used for enrollment selfies. On a synthetic classroom test (six group photos tiled into one frame, 23 faces), detection went from 1/23 to 22/23 at 1080p and from 3/23 to 22/23 at 4K. Identity features are computed from a sharper crop of up to 224 px taken from the original photo.

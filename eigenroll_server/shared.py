@@ -1,4 +1,5 @@
 """Django-only persistence gateway. No database credential reaches the browser."""
+import base64, binascii, re
 import json, os, hashlib, time, math, uuid, gzip
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -37,6 +38,27 @@ r5=lambda v:[round(x,5) for x in v]
 # Face features as seen in a class photo: 8 varied views plus up to 3 side views each way (room to grow).
 # Class-photo references per student: 8 photos x 2 sizes (80 and 36 px) + up to 6 side views.
 MAX_CLASSROOM=24
+# ArcFace features (src/arcface.ts packFeature): "scale:base64(512 int8)". About 690 characters each.
+ARC_FEATURE=re.compile(r'^[0-9.eE+-]{1,16}:[A-Za-z0-9+/]{683}=$')
+MAX_ARC=60
+def valid_packed(s):
+    if not isinstance(s,str) or not ARC_FEATURE.match(s): return False
+    try: return math.isfinite(float(s.split(':')[0])) and len(base64.b64decode(s.split(':')[1]))==512
+    except (ValueError,binascii.Error): return False
+def unpack(s):
+    scale,data=s.split(':');raw=base64.b64decode(data);v=[(b-256 if b>127 else b)*float(scale) for b in raw];n=math.sqrt(sum(x*x for x in v)) or 1
+    return [x/n for x in v]
+def pack(v):
+    n=math.sqrt(sum(x*x for x in v)) or 1;v=[x/n for x in v];m=max(abs(x) for x in v) or 1;scale=m/127
+    raw=bytes((round(x/scale)&255) for x in v);return f'{scale:.6g}:'+base64.b64encode(raw).decode()
+def valid_arc_vector(v): return isinstance(v,list) and len(v)==512 and all(type(x) in (float,int) and math.isfinite(x) and abs(x)<=1.0001 for x in v)
+def cosine(a,b): return sum(x*y for x,y in zip(a,b))
+def valid_arc(d):
+    arc=d.get('arc')
+    if arc is None: return {}
+    version=d.get('arcVersion');count=d.get('arcFaces')
+    if not isinstance(arc,list) or not 5<=len(arc)<=MAX_ARC or not all(valid_packed(x) for x in arc) or type(version) is not int or not 1<=version<=100 or type(count) is not int: raise GatewayError('Invalid face features.',400)
+    return {'arc':arc,'arcVersion':version,'arcFaces':count}
 def valid_yaw(v): return v is None or (type(v) in (int,float) and math.isfinite(v) and abs(v)<=10)
 SESSION_SECONDS=8*3600
 REMEMBER_SECONDS=30*24*3600
@@ -187,6 +209,9 @@ LEARN_PER_CALL=3
 LEARN_MAX_DISTANCE=0.55
 # Nearly identical to something the model already has teaches nothing.
 LEARN_MIN_DISTANCE=0.08
+# ArcFace: a confirmed face must still resemble the student's registration (similarity), and adds nothing when it is a near copy.
+ARC_LEARN_MIN=0.25
+ARC_LEARN_SAME=0.95
 @require_http_methods(['POST'])
 @protected
 def learn(request):
@@ -198,10 +223,25 @@ def learn(request):
     added=skipped=0
     for sid,vectors in faces.items():
         if not isinstance(sid,str) or len(sid)>100 or not isinstance(vectors,list) or len(vectors)>LEARN_PER_CALL: raise ValueError()
-        if not all(valid_features(v) for v in vectors): raise GatewayError('Invalid face features.',400)
+        arc=bool(vectors) and all(valid_arc_vector(v) for v in vectors)
+        if not arc and not all(valid_features(v) for v in vectors): raise GatewayError('Invalid face features.',400)
         rows=db(query('eigenroll_entities',id='eq.students:'+sid,kind='eq.students',select='id,payload,revision'))
         if not rows: skipped+=len(vectors);continue
         row=rows[0];p=row['payload']
+        if arc:
+            gallery=[unpack(x) for x in p.get('arc',[]) if valid_packed(x)];learned_arc=[x for x in p.get('arcLearned',[]) if valid_packed(x)]
+            if not gallery: skipped+=len(vectors);continue
+            for v in vectors:
+                n=math.sqrt(sum(x*x for x in v)) or 1;v=[x/n for x in v]
+                best=max(cosine(v,g) for g in gallery);same=max([best]+[cosine(v,unpack(x)) for x in learned_arc])
+                if best<ARC_LEARN_MIN or same>ARC_LEARN_SAME: skipped+=1;continue
+                learned_arc.append(pack(v));added+=1
+            learned_arc=learned_arc[-MAX_LEARNED:]
+            if learned_arc==p.get('arcLearned',[]): continue
+            stamp=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+            updated=db(query('eigenroll_entities',id='eq.'+row['id'],revision='eq.'+str(int(row['revision']))),'PATCH',{'payload':{**p,'arcLearned':learned_arc,'learnedAt':stamp},'revision':int(row['revision'])+1,'updated_at':stamp},'return=representation')
+            if not updated: raise GatewayError('A student record changed at the same moment. Press Learn again.',409)
+            continue
         known=[f['embedding'] for f in p.get('faces',[]) if valid_features(f.get('embedding'))]
         learned=[v for v in p.get('learned',[]) if valid_features(v)]
         if not known: skipped+=len(vectors);continue
@@ -240,7 +280,7 @@ def enrollment(request):
     students=db(query('eigenroll_entities',kind='eq.students',select='payload',**{'payload->>classId':'eq.'+invite['classId'],'payload->>roll':'eq.'+roll.strip()}))
     if students: raise GatewayError('This SAP ID is already registered. Contact your teacher if your details need to change.',409)
     ident=str(uuid.uuid4())
-    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,'classroomVersion':version,
+    record={'id':ident,'classId':invite['classId'],'name':name.strip(),'roll':roll.strip(),'faces':faces,'classroom':classroom,'classroomVersion':version,**valid_arc(d),
             'registeredAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
     # Registered students join the attendance roster immediately; the board builds its model from the roster.
     db('eigenroll_entities','POST',{'id':'students:'+ident,'kind':'students','payload':record})
@@ -261,7 +301,9 @@ def attendance(request):
             students.append({k:p[k] for k in ('id','name','roll','classId')}|{
                 'faces':[{'image':'','vector':[],**({'embedding':r5(f['embedding'])} if f.get('embedding') else {})} for f in p.get('faces',[])],
                 'classroom':[r5(v) for v in p.get('classroom',[])],
-                'learned':[r5(v) for v in p.get('learned',[]) if valid_features(v)]})
+                'learned':[r5(v) for v in p.get('learned',[]) if valid_features(v)],
+                **({'arc':[x for x in p['arc'] if valid_packed(x)],'arcVersion':p.get('arcVersion'),'arcFaces':p.get('arcFaces'),
+                    'arcLearned':[x for x in p.get('arcLearned',[]) if valid_packed(x)]} if p.get('arc') else {})})
         if len(rows)<100:break
         offset+=100
     result=JsonResponse({'classes':[{'id':'classroom','name':'BTI DS 2022 - 28'}],'students':students,'models':{},'sessions':[]},json_dumps_params={'separators':(',',':')})

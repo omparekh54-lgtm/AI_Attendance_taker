@@ -95,6 +95,39 @@ class SharedSecurityTests(SimpleTestCase):
         self.assertEqual(self.client.get('/api/attendance?kind=students').status_code,400)
         self.assertEqual(self.post('/api/attendance',{}).status_code,405)
         self.assertEqual(self.post('/api/workspace',{}).status_code,401)
+    def test_arcface_features_are_validated_stored_and_sent_to_the_board(self):
+        from .shared import pack
+        token=signing.dumps({'classId':'classroom'},salt='enrollment');written=[]
+        arc=[pack([((i*7+k)%13)-6 for i in range(512)]) for k in range(36)]
+        payload={'name':'Asha','roll':'70382200098','consent':True,'faces':[self.face() for _ in range(20)],'arc':arc,'arcVersion':1,'arcFaces':20}
+        def gateway(path,method='GET',body=None,*args):
+            if path.startswith('rpc/'):return True
+            if 'eq.classes' in path:return [{'payload':{'name':'Our classroom'}}]
+            if method=='POST':written.append(body);return None
+            return []
+        with patch('eigenroll_server.shared.db',side_effect=gateway):
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**payload,'arc':arc[:3]}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,{**payload,'arc':['1:'+'A'*10]*10}).status_code,400)
+            self.assertEqual(self.post('/api/enroll?invite='+token,payload).status_code,201)
+        stored=written[-1]['payload'];self.assertEqual(len(stored['arc']),36);self.assertEqual(stored['arcFaces'],20)
+        with patch('eigenroll_server.shared.db',return_value=[{'payload':{**stored,'arcLearned':[arc[0]]}}]):
+            s=self.client.get('/api/attendance?kind=snapshot').json()['students'][0]
+        self.assertEqual(len(s['arc']),36);self.assertEqual(s['arcLearned'],[arc[0]]);self.assertNotIn('image',json.dumps(s).replace('"image": ""',''))
+    def test_learning_arcface_faces_rejects_mis_taps_and_near_copies(self):
+        from .shared import pack, unpack
+        self.login()
+        own=[((i*7)%13)-6.0 for i in range(512)];other=[((i*5)%11)-5.0 for i in range(512)]
+        row={'id':'students:s','revision':3,'payload':{'id':'s','faces':[],'arc':[pack(own)]*5}};patched=[]
+        def gateway(path,method='GET',body=None,*args):
+            if method=='PATCH':patched.append(body);return [{'revision':4}]
+            return [row]
+        n=lambda v:[x/sum(y*y for y in v)**.5 for x in v]
+        close=n([a+0.8*b for a,b in zip(n(own),n(other))])
+        with patch('eigenroll_server.shared.db',side_effect=gateway):
+            r=self.post('/api/learn',{'faces':{'s':[n(other),n(own),close]}}).json()
+        self.assertEqual(r,{'added':1,'skipped':2})
+        self.assertEqual(len(patched[0]['payload']['arcLearned']),1)
+        self.assertGreater(sum(a*b for a,b in zip(unpack(patched[0]['payload']['arcLearned'][0]),close)),0.999)
     def test_attendance_snapshot_pages_without_truncating_the_roster(self):
         row={'payload':{'id':'s','name':'Student','roll':'123','classId':'classroom','faces':[]}}
         with patch('eigenroll_server.shared.db',side_effect=[[row]*100,[row]]) as db:

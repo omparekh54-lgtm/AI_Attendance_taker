@@ -3,6 +3,7 @@ dist/
 .vercel/
 .env*
 public/wasm/
+public/ort/
 test-results/
 playwright-report/
 

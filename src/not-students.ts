@@ -7,7 +7,7 @@ export const MAX_NOT_STUDENTS = 300;
 export function loadNotStudents(storage: Pick<Storage, 'getItem'> = localStorage): number[][] {
   try {
     const saved = JSON.parse(storage.getItem(KEY) ?? '[]');
-    return Array.isArray(saved) ? saved.filter(v => Array.isArray(v) && v.length === 128 && v.every(x => Number.isFinite(x) && Math.abs(x) <= 5)) : [];
+    return Array.isArray(saved) ? saved.filter(v => Array.isArray(v) && (v.length === 128 || v.length === 512) && v.every(x => Number.isFinite(x) && Math.abs(x) <= 5)) : [];
   } catch { return []; }
 }
 

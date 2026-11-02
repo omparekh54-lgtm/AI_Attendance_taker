@@ -1,4 +1,5 @@
 import type {Observation} from './attendance';
+import {ARC_SAME_PERSON} from './arc-identity';
 
 /** How many people are in the room, from every capture combined.
  *  students: registered students present (recognised, confirmed or marked by the teacher).
@@ -15,6 +16,9 @@ export type HeadCount = {total: number; students: number; toConfirm: number; unr
 export const SAME_PERSON_DISTANCE = 0.5;
 
 const distance = (a: number[], b: number[]) => Math.sqrt(a.reduce((n, v, i) => n + (v - b[i]) ** 2, 0));
+/** ArcFace features (512 numbers, unit length): the same-person test is a similarity, turned into the matching
+ *  distance (√(2 − 2·cos)) so both engines share the grouping below. */
+export const ARC_SAME_PERSON_DISTANCE = Math.sqrt(2 - 2 * ARC_SAME_PERSON);
 
 /** Two faces seen at the same moment are two different people: the same photo, or overlapping time in one video. */
 export function sameMoment(a: Observation, b: Observation) {
@@ -56,10 +60,11 @@ export function headCount(observations: Observation[], presentIds: Set<string>, 
   rest.push(...observations.filter(o => !o.studentId && (!o.suggestion || o.notStudent) && o.embedding));
   rest.sort((a, b) => (a.capture ?? 0) - (b.capture ?? 0));
   for (const o of rest) {
-    let best: Group | undefined, bestD = samePerson;
+    const limit = o.embedding!.length === 512 ? ARC_SAME_PERSON_DISTANCE : samePerson;
+    let best: Group | undefined, bestD = limit;
     for (const g of groups) {
       if (g.faces.some(f => sameMoment(f, o))) continue;
-      const d = Math.min(...g.faces.flatMap(f => (f.embedding ? [distance(f.embedding, o.embedding!)] : [])));
+      const d = Math.min(...g.faces.flatMap(f => (f.embedding?.length === o.embedding!.length ? [distance(f.embedding, o.embedding!)] : [])));
       if (d <= bestD) { bestD = d; best = g; }
     }
     if (best) best.faces.push(o); else groups.push({faces: [o]});

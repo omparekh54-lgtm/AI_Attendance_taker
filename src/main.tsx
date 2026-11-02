@@ -1,7 +1,13 @@
 import {IDENTITY_EXTRACTOR, IDENTITY_RULES} from './identity';
 import {describeFaceDataUrl} from './embeddings';
 import {classroomFeatures, CLASSROOM_VERSION} from './classroom-features';
+import {ARC_RULES} from './arc-identity';
+import {allHaveArc} from './build-model';
+import {useArcEngine} from './engine';
+import {ARC_VERSION} from './arc-gallery';
 const needsClassFeatures = (s: Student) => !s.classroom?.length || (s.classroomVersion ?? 1) < CLASSROOM_VERSION;
+/** ArcFace features of the registration photos (arc-gallery.ts); recomputed when the student adds samples. */
+const needsArc = (s: Student) => !s.arc?.length || (s.arcVersion ?? 0) < ARC_VERSION || s.arcFaces !== s.faces.length;
 import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Brain, Camera, Check, ChevronLeft, ClipboardCopy, Download, LoaderCircle, RefreshCw, RotateCcw, ScanFace, Smartphone, Users} from 'lucide-react';
@@ -34,7 +40,7 @@ function trainModel(students: Student[], classroom: Sample[] = []): Promise<Mode
     const worker = new Worker(new URL('./train.worker.ts', import.meta.url), {type: 'module'});
     worker.onmessage = e => { worker.terminate(); if (e.data.error) reject(Error(e.data.error)); else resolve(e.data.model); };
     worker.onerror = e => { worker.terminate(); reject(Error(e.message)); };
-    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, learned: s.learned, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
+    worker.postMessage({students: students.map(s => ({id: s.id, classroom: s.classroom, learned: s.learned, arc: s.arc, arcLearned: s.arcLearned, faces: s.faces.map(f => ({vector: f.vector, embedding: f.embedding}))})), signature: rosterSignature(students), classroom});
   });
 }
 
@@ -57,7 +63,9 @@ function App() {
   const students = useMemo(() => state.students.filter(s => s.classId === BATCH_ID).sort((a, b) => a.name.localeCompare(b.name)), [state.students]);
   const byId = useMemo(() => new Map(students.map(s => [s.id, s])), [students]);
   const model = state.models[BATCH_ID],
-    validModel = model?.rosterSignature === rosterSignature(students) && model.identity?.extractor === IDENTITY_EXTRACTOR && model.identity.rules === IDENTITY_RULES ? model : undefined;
+    validModel = model?.rosterSignature === rosterSignature(students) && (model.arc ? model.arc.rules === ARC_RULES : model.identity?.extractor === IDENTITY_EXTRACTOR && model.identity.rules === IDENTITY_RULES) ? model : undefined;
+  // Classroom photos and videos are read by the engine the model was built for.
+  useArcEngine(!!validModel?.arc);
   currentModel.current = validModel;
 
   useEffect(() => {
@@ -124,10 +132,25 @@ function App() {
           s.classroom = result.classroom; s.classroomVersion = CLASSROOM_VERSION;
           s.faces.forEach((f, i) => { f.yaw = Math.round(result.yaws[i] * 1000) / 1000; });
         }
+        // ArcFace features from each student's registration photos (once per student, or after new samples).
+        const needArc = roster.filter(s => needsArc(s) && s.faces.length >= 5 && s.faces.every(f => f.image));
+        if (needArc.length) {
+          const {arcGallery} = await import('./arc-gallery');
+          let n = 0;
+          for (const s of needArc) {
+            n++;
+            try { Object.assign(s, await arcGallery(s.faces, (d, t) => setBusy(`Preparing the new recognition for ${s.name} (${n} / ${needArc.length}) · ${Math.round(100 * d / t)}%`))); }
+            catch (e) { setNotice(`${s.name}: ${(e as Error).message}`); }
+          }
+        }
       }
       const trained = await trainModel(roster);
       const updated = new Map(roster.map(s => [s.id, s]));
-      await commit({...state, students: state.students.map(s => updated.get(s.id) ?? s), models: {...state.models, [BATCH_ID]: trained}});
+      const students2 = state.students.map(s => updated.get(s.id) ?? s);
+      // ArcFace models are rebuilt from the roster in a few seconds wherever they are used, and are too large to save.
+      const {[BATCH_ID]: _old, ...otherModels} = state.models;
+      await commit({...state, students: students2, models: trained.arc ? otherModels : {...state.models, [BATCH_ID]: trained}});
+      if (trained.arc) setState(s => ({...s, models: {...s.models, [BATCH_ID]: trained}}));
       if (management) setNotice('Recognition is up to date.');
     });
   }
@@ -136,7 +159,7 @@ function App() {
   useEffect(() => {
     const signature = rosterSignature(students);
     // On the teacher page, also fill in class-photo features for students registered before they existed.
-    const missingClassFeatures = management && students.some(s => needsClassFeatures(s) && s.faces.every(f => f.image));
+    const missingClassFeatures = management && students.some(s => (needsClassFeatures(s) || needsArc(s)) && s.faces.every(f => f.image));
     if (!loaded || students.length < 2 || (validModel && !missingClassFeatures) || attempted.current === signature) return;
     attempted.current = signature;
     void train();
@@ -269,6 +292,7 @@ function App() {
         {error && <div className="alert error" role="alert">{error}{!loaded && <button onClick={() => location.reload()}>Retry</button>}</div>}
         {busy && <div className="alert" role="status"><LoaderCircle size={18} className="spin"/>{busy}…</div>}
         {notice && <div className="alert success" role="status">{notice}</div>}
+        {loaded && !management && students.length >= 2 && !allHaveArc(students) && <div className="alert" role="status">Using the older recognition: {students.filter(s => !s.arc?.length).length} student{students.filter(s => !s.arc?.length).length === 1 ? '' : 's'} still need the new face features. Open the teacher page once to prepare them.</div>}
 
         {management && loaded ? (
           <>

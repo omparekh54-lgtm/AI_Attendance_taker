@@ -1,6 +1,7 @@
 import type {IdentityModel} from './identity';
+import type {ArcModel} from './arc-identity';
 export type Sample={label:string;vector:number[]};
-export type Model={mean:number[];pca:number[][];lda:number[][];templates:Sample[];limits:Record<string,number>;version:string;dimensions:number;trainedAt:string;rosterSignature?:string;identity?:IdentityModel};
+export type Model={mean:number[];pca:number[][];lda:number[][];templates:Sample[];limits:Record<string,number>;version:string;dimensions:number;trainedAt:string;rosterSignature?:string;identity?:IdentityModel;/** ArcFace engine: used instead of `identity` when every student has ArcFace features */arc?:ArcModel};
 const dot=(a:number[],b:number[])=>a.reduce((s,v,i)=>s+v*b[i],0);
 const norm=(a:number[])=>Math.sqrt(dot(a,a));
 const project=(x:number[],basis:number[][])=>basis.map(b=>dot(x,b));

@@ -3,6 +3,10 @@ import {describeFaceWithPose, describeClassroomFaceWithPose} from './embeddings'
 import {FaceDetector, FilesetResolver} from '@mediapipe/tasks-vision';
 import type {Face} from './store';
 import type {DetectedFace} from './attendance';
+import type {ArcBox} from './arcface';
+import {usingArcEngine} from './engine';
+/** SCRFD boxes are tight around the face; faces this narrow (px) are still read (18 px faces matched on real photos). */
+export const ARC_MIN_FACE_PX = 12;
 
 let detector: Promise<FaceDetector> | undefined;
 export function ready() {
@@ -33,6 +37,7 @@ export function toFrame(source: Source) {
 
 /** Step 1: find faces. `group` adds the classroom detector over the whole frame and overlapping tiles. */
 export async function findFaces(frame: HTMLCanvasElement, options: {group?: boolean; lowRes?: boolean; onProgress?: ScanProgress; progressShare?: number} = {}): Promise<Detection[]> {
+  if (options.group && usingArcEngine()) return arcDetections(frame, options.onProgress, options.progressShare ?? 0.7);
   const model = await ready();
   const w = frame.width, h = frame.height;
   const detections: Detection[] = model.detect(frame).detections.map(d => ({...d, boundingBox: {...d.boundingBox!}}));
@@ -79,6 +84,21 @@ export function brightened(frame: HTMLCanvasElement) {
   return out;
 }
 
+/** SCRFD faces as Detections: keypoints are its 5 landmarks (eyes, nose, mouth corners), normalised like MediaPipe's. */
+async function arcDetections(frame: HTMLCanvasElement, onProgress: ScanProgress | undefined, share: number): Promise<Detection[]> {
+  const {detectArcFaces} = await import('./arcface');
+  onProgress?.(0, 'Finding faces');
+  // Dark classrooms: find faces in a brightened copy; landmarks map back to the original photo unchanged.
+  const found = await detectArcFaces(brightened(frame), f => onProgress?.(share * f, 'Finding faces'));
+  return found.map(arcToDetection(frame.width, frame.height));
+}
+const arcToDetection = (w: number, h: number) => (b: ArcBox): Detection => ({
+  boundingBox: {originX: b.x, originY: b.y, width: b.w, height: b.h, angle: 0},
+  categories: [{score: b.score, index: 0, categoryName: 'arc', displayName: 'face'}],
+  keypoints: b.kps.map(([x, y]) => ({x: x / w, y: y / h, score: 1, label: ''})),
+});
+const isArc = (d: Detection) => d.categories[0]?.categoryName === 'arc' && (d.keypoints?.length ?? 0) === 5;
+
 async function groupDetections(frame: HTMLCanvasElement, onProgress: ScanProgress | undefined, share: number, lowRes: boolean): Promise<Detection[]> {
   const {detectFaceBoxes} = await import('./embeddings');
   const w = frame.width, h = frame.height;
@@ -107,10 +127,11 @@ async function groupDetections(frame: HTMLCanvasElement, onProgress: ScanProgres
 }
 
 /** Step 2: thumbnail, quality checks and identity features for one detected face. */
-export async function describeDetection(frame: HTMLCanvasElement, d: Detection, options: {classroom?: boolean; tight?: boolean} = {}): Promise<DetectedFace> {
+export async function describeDetection(frame: HTMLCanvasElement, d: Detection, options: {classroom?: boolean; tight?: boolean; skipFeatures?: boolean} = {}): Promise<DetectedFace> {
   const w = frame.width, h = frame.height, box = d.boundingBox, points = d.keypoints ?? [];
   const eye1 = points[0], eye2 = points[1];
-  const cx = box.originX + box.width / 2, cy = box.originY + box.height * 0.48, size = Math.max(box.width, box.height) * 1.2;
+  // SCRFD boxes are tighter than MediaPipe's, so its thumbnails take a little more around the face.
+  const cx = box.originX + box.width / 2, cy = box.originY + box.height * 0.48, size = Math.max(box.width, box.height) * (isArc(d) ? 1.45 : 1.2);
   let angle = 0;
   if (eye1 && eye2) {
     let dx = (eye2.x - eye1.x) * w, dy = (eye2.y - eye1.y) * h;
@@ -136,10 +157,16 @@ export async function describeDetection(frame: HTMLCanvasElement, d: Detection, 
     sharp += (4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - 24] - gray[i + 24]) ** 2;
   }
   // Classroom scans recognise faces from 32 px (tested: as accurate as 45 px, never a wrong student); enrolment keeps 45 px.
-  const minSide = options.classroom ? MIN_RECOGNISABLE_FACE_PX : 45;
-  const usable = box.width >= minSide && box.height >= minSide && std > 0.045 && sharp / 484 > 0.0005;
+  const arc = isArc(d), minSide = arc ? ARC_MIN_FACE_PX : options.classroom ? MIN_RECOGNISABLE_FACE_PX : 45;
+  // ArcFace reads small, soft faces well, so only the size and a minimum of contrast are checked.
+  const usable = box.width >= minSide && box.height >= minSide && std > 0.045 && (arc || sharp / 484 > 0.0005);
   const face: Face = {image: crop.toDataURL('image/jpeg', 0.8), vector: gray.map(v => (v - mean) / Math.max(std, 0.05))};
-  if (usable) {
+  if (usable && arc && !options.skipFeatures) {
+    const {alignFace, arcEmbed, yawFromKeypoints} = await import('./arcface');
+    const kps = points.map(p => [p.x * w, p.y * h] as [number, number]);
+    face.embedding = (await arcEmbed([alignFace(frame, kps)]))[0];
+    face.yaw = Math.round(yawFromKeypoints(kps) * 1000) / 1000;
+  } else if (usable && !arc) {
     const sharpCrop = identityCrop(frame, cx, cy, size, angle, !!options.tight);
     const described = options.classroom ? await describeClassroomFaceWithPose(sharpCrop) : await describeFaceWithPose(sharpCrop);
     face.embedding = described.vector;
@@ -153,10 +180,25 @@ export async function detect(source: Source, options: {group?: boolean; onProgre
   const frame = toFrame(source);
   // Photos (not video frames) get the extra small-face scan when they are low resolution.
   const found = await findFaces(frame, {...options, lowRes: true});
+  if (found.length && found.every(isArc)) return describeArcBatch(frame, found, options.onProgress);
   const faces: DetectedFace[] = [];
   for (const d of found) {
     faces.push(await describeDetection(frame, d, {classroom: options.group, tight: isTightPortrait(frame.width, frame.height, found.length, d.boundingBox)}));
     if (options.group) options.onProgress?.(0.7 + 0.3 * faces.length / found.length, 'Recognising students');
+  }
+  return faces;
+}
+
+/** ArcFace: thumbnails first, then every face's features in batches (much faster than one at a time). */
+async function describeArcBatch(frame: HTMLCanvasElement, found: Detection[], onProgress?: ScanProgress): Promise<DetectedFace[]> {
+  const {alignFace, arcEmbed, yawFromKeypoints} = await import('./arcface');
+  const faces = await Promise.all(found.map(d => describeDetection(frame, d, {classroom: true, skipFeatures: true})));
+  const readable = faces.flatMap((f, i) => (f.usable ? [i] : []));
+  for (let k = 0; k < readable.length; k += 8) {
+    onProgress?.(0.7 + 0.3 * k / readable.length, 'Recognising students');
+    const part = readable.slice(k, k + 8), kps = part.map(i => found[i].keypoints.map(p => [p.x * frame.width, p.y * frame.height] as [number, number]));
+    const vectors = await arcEmbed(kps.map(points => alignFace(frame, points)));
+    part.forEach((i, j) => { faces[i].face.embedding = vectors[j]; faces[i].face.yaw = Math.round(yawFromKeypoints(kps[j]) * 1000) / 1000; });
   }
   return faces;
 }

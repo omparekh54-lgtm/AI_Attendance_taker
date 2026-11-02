@@ -1,4 +1,5 @@
 import {findFaces, describeDetection, type Detection, type ScanProgress} from './vision';
+import {usingArcEngine} from './engine';
 import {linkFrame, beginTracking, stitchTracks, type Track} from './tracking';
 import type {DetectedFace} from './attendance';
 
@@ -31,7 +32,7 @@ export async function scanVideo(file: Blob, onProgress?: ScanProgress): Promise<
       linkFrame(tracks, i, found.map(d => {
         const b = d.boundingBox, minSide = Math.min(b.width, b.height);
         return {cx: b.originX + b.width / 2, cy: b.originY + b.height / 2, size: Math.max(b.width, b.height), sig: signature(frame, d),
-          sample: {frame: i, cx: b.originX + b.width / 2, cy: b.originY + b.height / 2, area: b.width * b.height, usable: minSide >= 32, ...miniFrame(frame, d)}};
+          sample: {frame: i, cx: b.originX + b.width / 2, cy: b.originY + b.height / 2, area: b.width * b.height, usable: minSide >= (usingArcEngine() ? 16 : 32), ...miniFrame(frame, d)}};
       }));
     }
     // Tiny faces seen in only one or two frames are flicker or too far away to recognise; drop them.

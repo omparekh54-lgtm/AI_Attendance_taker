@@ -8,3 +8,6 @@ for(const name of ['face_recognition_model','face_landmark_68_tiny_model','face_
 // Group-photo face detector, used only for classroom captures.
 await mkdir('public/models/detector',{recursive:true});
 for(const suffix of ['.bin','-weights_manifest.json'])await cp(`node_modules/@vladmandic/face-api/model/ssd_mobilenetv1_model${suffix}`,`public/models/detector/ssd_mobilenetv1_model${suffix}`);
+// ArcFace engine runtime (onnxruntime-web). The SCRFD and ArcFace model files live in public/models/arc (committed).
+await mkdir('public/ort',{recursive:true});
+for(const name of ['ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs'])await cp(`node_modules/onnxruntime-web/dist/${name}`,`public/ort/${name}`);
