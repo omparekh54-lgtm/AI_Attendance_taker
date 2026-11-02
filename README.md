@@ -21,9 +21,9 @@ The home page offers **Take attendance** (`?page=attendance`) and **Student regi
 Class photos and videos are now read by a modern face engine, with the project's own PCA + LDA on top:
 
 1. **Find faces:** SCRFD-10G (InsightFace) over the whole photo plus overlapping tiles (enlarged 2× for photos up to 2000 px), each face with 5 landmarks.
-2. **Align:** each face is rotated and scaled onto ArcFace's 112×112 template using the eyes, nose and mouth corners.
+2. **Align:** each face is rotated and scaled onto ArcFace's 112×112 template using the eyes, nose and mouth corners. Faces under 40 px get their landmarks measured again on a 3× enlarged crop first.
 3. **Describe:** ArcFace ResNet-50 (WebFace600K) gives 512 identity numbers per face, averaged with the mirror image. The model runs in the browser (onnxruntime-web); photos never leave the device. It is shipped with 8-bit weights (44 MB instead of 174 MB; features within cosine 0.9997 of the full model). The model files live in `models/arc` and are loaded by the browser from GitHub at the commit that added them (they would push the Vercel build past its 250 MB limit); to change them, commit new files, then update `ARC_MODELS_COMMIT` in `src/arcface.ts`.
-4. **Decide:** a face's score for a student is its similarity to that student's gallery: 16 registration crops, each also shrunk to how it looks 36 px and 24 px wide in a class photo. A student is marked when
+4. **Decide:** a face's score for a student is its similarity to that student's gallery: 16 registration crops, each also shrunk to how it looks 36, 24 and 18 px wide in a class photo. A student is marked when
    - the score clears **that student's own bar**, set just above how close their nearest classmates come (look-alike pairs get a higher bar; between 0.36 and 0.52),
    - it leads the next student by at least 0.10,
    - the from-scratch **PCA (64 components) + LDA** projection agrees on who it is, and
@@ -40,7 +40,9 @@ Class photos and videos are now read by a modern face engine, with the project's
 
 Matched students scored 0.35–0.71; every unregistered person stayed at or below 0.29.
 
-**Switching over:** the board uses the ArcFace engine once every student has ArcFace features, and the older engine until then (it says so on screen). New registrations compute them on the student's phone. For students registered earlier, open the teacher page (`?page=manage`) once: it prepares them from the stored registration crops. This took about 13 minutes for 27 students on a slow test machine; a laptop is faster. Each student's features take about 33 KB.
+**Hand-labelled check** (every face in both photos labelled: 20 students, 16 teachers/guests): the first ArcFace release marked 17/20, offered 2, missed 1. With sharper landmarks for small faces and 18 px gallery copies: **18/20 marked, 2 offered, 0 missed, 0 wrong names, no teacher or guest named or offered**. The highest teacher/guest score rose from 0.295 to 0.338 (still below every bar), so keep an eye on it with more photos. Details: `research/arcface-class-photos.md`.
+
+**Switching over:** the board uses the ArcFace engine once every student has ArcFace features, and the older engine until then (it says so on screen). New registrations compute them on the student's phone. For students registered earlier, open the teacher page (`?page=manage`) once: it prepares them from the stored registration crops. This took about 13 minutes for 27 students on a slow test machine; a laptop is faster. Each student's features take about 44 KB.
 
 The pretrained InsightFace models are licensed for non-commercial research use (see `THIRD_PARTY_NOTICES.md`). The sections below describe the earlier face-api engine and its tests.
 

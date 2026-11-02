@@ -72,3 +72,10 @@ Experiments (Python prototype mirroring the app; relative changes):
 | Gallery: WhatsApp-style double JPEG | mixed | no |
 | Gallery: darker/brighter copies | one student lost its lead | no |
 | Gallery: all crops instead of 16 | ≈ no change | no |
+
+Browser check with the app's own code after porting both kept changes (galleries rebuilt through the teacher page):
+18 of 20 students marked, 2 offered to confirm (0.35, 0.36), 0 missed, 0 wrong, 0 teachers/guests named or offered.
+Highest teacher/guest score 0.338 (lead 0.067), below every bar.
+
+Also fixed while rebuilding: with 64 gallery features per student, PCA/LDA training passed ~100,000 values to
+`Math.min(...)` and overflowed the call stack; the limit calculation now uses a loop (test: a full 27-student class).

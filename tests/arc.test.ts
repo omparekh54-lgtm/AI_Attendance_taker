@@ -89,3 +89,10 @@ test('Overlapping detections are merged', () => {
   const box = (x: number, score: number) => ({x, y: 0, w: 10, h: 10, score, kps: []});
   assert.equal(nms([box(0, 0.9), box(1, 0.8), box(30, 0.7)], 0.4).length, 2);
 });
+
+test('A full class (27 students × 64 features) trains without overflowing the call stack', () => {
+  const big = Array.from({length: 27}, (_, p) => ({id: 'B' + p, arc: Array.from({length: 64}, (_, s) => sample(p + 20, s))}));
+  const m = trainArc(big);
+  assert.equal(Object.keys(m.accept).length, 27);
+  assert.equal(predictArc(m, sample(25, 99)).label, 'B5');
+});

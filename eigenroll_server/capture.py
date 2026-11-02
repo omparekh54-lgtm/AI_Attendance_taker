@@ -52,7 +52,10 @@ def phone(request):
     try: ident=signing.loads(request.GET.get('token',''),salt='phone-capture',max_age=900)['id']
     except (signing.BadSignature,KeyError):raise GatewayError('Invalid or expired phone link. Scan a new QR code.',410)
     row=active(ident)
-    if request.method=='GET':return response({'batch':'BTI DS 2022 - 28','waiting':row.get('payload') is not None})
+    if request.method=='GET':
+        # The phone describes faces with the same engine as the board: ArcFace once every student has ArcFace features.
+        legacy=db(query('eigenroll_entities',select='id',kind='eq.students',limit=1,**{'payload->>classId':'eq.classroom','payload->>arcVersion':'is.null'}))
+        return response({'batch':'BTI DS 2022 - 28','waiting':row.get('payload') is not None,'engine':'faceapi' if legacy else 'arc'})
     limit(request,'phone-capture',120)
     # A full classroom photo or video can hold 60+ faces; the pixel vector is optional because the board recognises from identity features.
     d=data(request,PHONE_MAX_BYTES,'This capture is too large to send. Take two photos of the class instead.');faces=d.get('faces')
@@ -65,7 +68,7 @@ def phone(request):
         if not isinstance(image,str) or not image.startswith('data:image/jpeg;base64,') or len(image)>30000:raise ValueError()
         if not isinstance(vector,list) or len(vector) not in (0,576) or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>25 for v in vector):raise ValueError()
         embedding=face.get('embedding')
-        if embedding is not None and (not isinstance(embedding,list) or len(embedding)!=128 or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>5 for v in embedding)):raise ValueError()
+        if embedding is not None and (not isinstance(embedding,list) or len(embedding) not in (128,512) or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>5 for v in embedding)):raise ValueError()
         if not valid_yaw(face.get('yaw')):raise ValueError()
         frames=item.get('frames')
         if frames is not None and (not isinstance(frames,list) or len(frames)!=2 or any(type(v) is not int or not 0<=v<=10000 for v in frames)):raise ValueError()

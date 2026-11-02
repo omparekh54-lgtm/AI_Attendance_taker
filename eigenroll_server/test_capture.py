@@ -23,7 +23,7 @@ class PhoneCaptureTests(SimpleTestCase):
     def test_phone_token_does_not_grant_roster_access(self):
         with patch('eigenroll_server.capture.db',return_value=[self.session]):
             r=self.client.get(self.path);self.assertEqual(r.status_code,200)
-            self.assertEqual(set(r.json()),{'batch','waiting'});self.assertEqual(r['Cache-Control'],'no-store')
+            self.assertEqual(set(r.json()),{'batch','waiting','engine'});self.assertEqual(r['Cache-Control'],'no-store')
         self.assertEqual(self.client.get('/api/workspace?token='+self.token).status_code,401)
     def test_invalid_expired_and_closed_phone_links_rejected(self):
         self.assertEqual(self.client.get('/api/phone-capture?token=forged').status_code,410)
@@ -42,6 +42,17 @@ class PhoneCaptureTests(SimpleTestCase):
         self.assertEqual(r.status_code,200);self.assertEqual(r.json()['faces'],90)
         stored=db.call_args.args[2]['payload']['faces'][0]
         self.assertEqual(stored['frames'],[2,9]);self.assertEqual(stored['face']['vector'],[])
+    def test_phone_uses_the_boards_engine_and_sends_arcface_features(self):
+        with patch('eigenroll_server.capture.db',side_effect=[[self.session],[{'id':'students:old'}]]):
+            self.assertEqual(self.client.get(self.path).json()['engine'],'faceapi')
+        with patch('eigenroll_server.capture.db',side_effect=[[self.session],[]]):
+            self.assertEqual(self.client.get(self.path).json()['engine'],'arc')
+        face={'face':{'image':'data:image/jpeg;base64,eA==','vector':[],'embedding':[0.044]*512},'usable':True}
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[self.session]]):
+            self.assertEqual(self.post(self.path,{'faces':[face]*60}).status_code,200)
+        face['face']['embedding']=[0.044]*300
+        with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[self.session]]):
+            self.assertEqual(self.post(self.path,{'faces':[face]}).status_code,400)
     def test_phone_keeps_head_turn_and_rejects_nonsense(self):
         ok={'face':{'image':'data:image/jpeg;base64,eA==','vector':[],'embedding':[0.01]*128,'yaw':0.72},'usable':True}
         with patch('eigenroll_server.capture.limit'),patch('eigenroll_server.capture.db',side_effect=[[self.session],[self.session]]) as db:

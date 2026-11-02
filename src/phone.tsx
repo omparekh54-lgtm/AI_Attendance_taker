@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import {Smartphone,X,Check,ScanFace} from 'lucide-react';
 import {api} from './api';
 import {CameraCapture} from './camera';
+import {useArcEngine} from './engine';
 import type {DetectedFace} from './attendance';
 type Pair={id:string;token:string;expiresAt:string};
 export function PhonePair({onCapture,onClose}:{onCapture:(faces:DetectedFace[],kind?:"photo"|"video")=>void;onClose:()=>void}){
@@ -15,7 +16,7 @@ export function PhonePair({onCapture,onClose}:{onCapture:(faces:DetectedFace[],k
 const compact=(faces:DetectedFace[])=>faces.map(f=>({face:{image:f.face.image,vector:[],...(f.face.embedding?{embedding:f.face.embedding.map(v=>Math.round(v*1e5)/1e5)}:{}),...(typeof f.face.yaw==='number'?{yaw:f.face.yaw}:{})},usable:f.usable,...(f.frames?{frames:f.frames}:{})}));
 export function PhoneCapture({token}:{token:string}){
  const[ready,setReady]=useState(false),[error,setError]=useState(''),[sent,setSent]=useState(0),[waiting,setWaiting]=useState(false);
- useEffect(()=>{api('phone-capture?token='+encodeURIComponent(token)).then(r=>{setReady(true);setWaiting(r.waiting)}).catch(e=>setError(e.message))},[token]);
+ useEffect(()=>{api('phone-capture?token='+encodeURIComponent(token)).then(r=>{useArcEngine(r.engine==='arc');setReady(true);setWaiting(r.waiting)}).catch(e=>setError(e.message))},[token]);
  useEffect(()=>{if(!waiting)return;let stopped=false,timer:ReturnType<typeof setTimeout>;async function poll(){try{const r=await api('phone-capture?token='+encodeURIComponent(token));if(stopped)return;if(!r.waiting){setWaiting(false);return}timer=setTimeout(poll,2000)}catch(e){if(!stopped){setError((e as Error).message);setWaiting(false)}}}poll();return()=>{stopped=true;clearTimeout(timer)}},[waiting,token]);
  return <main className="phone-page"><a className="brand" href="/"><ScanFace/>eigenroll.</a><span className="eyebrow">PHONE CAPTURE</span><h1>BTI DS 2022 - 28</h1><p>Your photos go to the connected smartboard. The student roster stays on the board.</p>{error&&<div className="alert error" role="alert">{error}</div>}{sent>0&&<div className="alert success" role="status">{waiting?'Photo sent. Waiting for the smartboard…':'Photo received by the smartboard. You can take another.'}</div>}{ready&&<CameraCapture phone disabled={waiting} onCapture={async faces=>{setError('');await api('phone-capture?token='+encodeURIComponent(token),'POST',{faces:compact(faces)});setSent(n=>n+1);setWaiting(true)}}/>}<footer>Close this page when finished. Phone access expires after 15 minutes.</footer></main>
 }
